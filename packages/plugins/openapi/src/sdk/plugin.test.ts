@@ -910,6 +910,39 @@ describe("OpenAPI Plugin", () => {
   // the integration's auth template — apiKey into a header, oauth as a bearer.
   // -------------------------------------------------------------------------
 
+  it.effect("persists an automatic icon derived from the spec's first server", () =>
+    Effect.gen(function* () {
+      const executor = yield* createExecutor(makeTestConfig({ plugins: testPlugins() }));
+      yield* executor.openapi.addSpec({
+        spec: {
+          kind: "blob",
+          value: JSON.stringify({
+            openapi: "3.0.3",
+            info: { title: "Strava", version: "1.0.0" },
+            servers: [{ url: "https://www.strava.com/api/v3" }],
+            paths: {
+              "/athlete": {
+                get: {
+                  operationId: "getAthlete",
+                  responses: { "200": { description: "athlete" } },
+                },
+              },
+            },
+          }),
+        },
+        slug: "strava_icon",
+        // Match the browser add flow: a blank optional override and an
+        // explicitly reviewed auth list must not suppress server-derived icon
+        // metadata.
+        baseUrl: "",
+        authenticationTemplate: [],
+      });
+
+      const integration = yield* executor.integrations.get(IntegrationSlug.make("strava_icon"));
+      expect(integration?.iconUrl).toBe("https://integrations.sh/logo/strava.com?sz=64");
+    }),
+  );
+
   it.effect("applies an apiKey auth template to the outbound request", () =>
     Effect.scoped(
       Effect.gen(function* () {

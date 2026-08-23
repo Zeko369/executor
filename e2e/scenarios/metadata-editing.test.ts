@@ -1,5 +1,5 @@
 // Cross-target: the curate-your-catalog promise. An integration's display
-// name and description, and a connection's description, are user-editable
+// name, description, and remote icon, and a connection's description, are user-editable
 // metadata — set them after the fact and they persist and read back. This is
 // the write half of the descriptions feature; openapi-update-spec covers the
 // half where a curated description SURVIVES a spec refresh.
@@ -34,7 +34,7 @@ const pingSpec = JSON.stringify({
 });
 
 scenario(
-  "Metadata · an integration's name/description and a connection's description are editable",
+  "Metadata · an integration's name/description/icon and a connection's description are editable",
   {},
   Effect.gen(function* () {
     const target = yield* Target;
@@ -50,7 +50,7 @@ scenario(
           payload: {
             spec: { kind: "blob", value: pingSpec },
             slug,
-            baseUrl: "http://127.0.0.1:59999", // never contacted
+            baseUrl: "https://api.example.com", // never contacted
             description: "Auto-derived at add time.",
             authenticationTemplate: [
               {
@@ -67,21 +67,34 @@ scenario(
         expect(initial.description, "the add-time description is stored").toBe(
           "Auto-derived at add time.",
         );
+        expect(initial.iconUrl, "the endpoint produces a persisted automatic icon").toBe(
+          "https://integrations.sh/logo/example.com?sz=64",
+        );
 
         // Rename and re-describe the integration — the curate step.
         const renamed = yield* apiClient.integrations.update({
           params: { slug },
-          payload: { name: "Acme Ping", description: "Hand-curated for the team." },
+          payload: {
+            name: "Acme Ping",
+            description: "Hand-curated for the team.",
+            iconUrl: "https://cdn.example.com/acme-ping.png",
+          },
         });
         expect(renamed.name, "the update response carries the new name").toBe("Acme Ping");
         expect(renamed.description, "the update response carries the new description").toBe(
           "Hand-curated for the team.",
+        );
+        expect(renamed.iconUrl, "the update response carries the custom icon").toBe(
+          "https://cdn.example.com/acme-ping.png",
         );
 
         // It persists for the next reader, not just in the response.
         const reread = yield* apiClient.integrations.get({ params: { slug } });
         expect(reread.name, "the name persisted").toBe("Acme Ping");
         expect(reread.description, "the description persisted").toBe("Hand-curated for the team.");
+        expect(reread.iconUrl, "the custom icon persisted").toBe(
+          "https://cdn.example.com/acme-ping.png",
+        );
 
         // A connection carries its own editable description.
         const providers = yield* apiClient.providers.list();

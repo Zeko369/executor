@@ -9,7 +9,9 @@ import {
   definePlugin,
   IntegrationAlreadyExistsError,
   IntegrationDetectionResult,
+  IntegrationIconUrl,
   IntegrationSlug,
+  integrationIconUrlFromUrl,
   mergeAuthTemplates,
   sha256Hex,
   ToolName,
@@ -221,6 +223,7 @@ const GraphqlAddIntegrationInputSchema = Schema.Struct({
   /** Agent-visible catalog description. Falls back to the introspected
    *  schema's own description, then the display name. */
   description: Schema.optional(Schema.String),
+  iconUrl: Schema.optional(IntegrationIconUrl),
   introspectionJson: Schema.optional(Schema.String),
   headers: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   queryParams: Schema.optional(Schema.Record(Schema.String, Schema.String)),
@@ -894,6 +897,7 @@ const makeGraphqlExtension = (ctx: PluginCtx<GraphqlStore>) => {
               slug,
               name: baseConfig.name,
               description: input.description?.trim() || baseConfig.name,
+              iconUrl: input.iconUrl ?? integrationIconUrlFromUrl(input.endpoint) ?? undefined,
               config: baseConfig,
               canRemove: true,
               canRefresh: true,
@@ -940,6 +944,7 @@ const makeGraphqlExtension = (ctx: PluginCtx<GraphqlStore>) => {
             slug,
             name: config.name,
             description: input.description?.trim() || schemaDescription || config.name,
+            iconUrl: input.iconUrl ?? integrationIconUrlFromUrl(input.endpoint) ?? undefined,
             config,
             canRemove: true,
             canRefresh: true,

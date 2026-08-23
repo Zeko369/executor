@@ -205,12 +205,15 @@ describe("providerServiceSplitDataMigration", () => {
 
       const integrations = yield* Effect.promise(() =>
         client.execute(
-          "SELECT slug, plugin_id, config, health_check FROM integration ORDER BY slug",
+          "SELECT slug, plugin_id, icon_url, config, health_check FROM integration ORDER BY slug",
         ),
       );
       expect(integrations.rows).toHaveLength(1);
       expect(integrations.rows[0]?.slug).toBe("google_calendar");
       expect(integrations.rows[0]?.plugin_id).toBe("openapi");
+      expect(integrations.rows[0]?.icon_url).toBe(
+        "https://fonts.gstatic.com/s/i/productlogos/calendar_2020q4/v8/192px.svg",
+      );
       expect(parseJson(String(integrations.rows[0]?.config))).toMatchObject({
         specHash: "mono-hash",
         specUrl: "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest",

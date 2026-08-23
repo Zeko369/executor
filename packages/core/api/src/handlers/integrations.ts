@@ -14,6 +14,7 @@ const toResponse = (i: Integration) => ({
   canRemove: i.canRemove,
   canRefresh: i.canRefresh,
   authMethods: i.authMethods,
+  ...(i.iconUrl ? { iconUrl: i.iconUrl } : {}),
   ...(i.displayUrl ? { displayUrl: i.displayUrl } : {}),
   ...(i.family ? { family: i.family } : {}),
 });
@@ -48,6 +49,9 @@ export const IntegrationsHandlers = HttpApiBuilder.group(ExecutorApi, "integrati
           yield* executor.integrations.update(path.slug, {
             ...(payload.name !== undefined ? { name: payload.name } : {}),
             ...(payload.description !== undefined ? { description: payload.description } : {}),
+            ...(payload.iconUrl !== undefined
+              ? { iconUrl: payload.iconUrl === null ? null : payload.iconUrl.trim() }
+              : {}),
           });
           const integration = yield* executor.integrations.get(path.slug);
           if (integration === null) {

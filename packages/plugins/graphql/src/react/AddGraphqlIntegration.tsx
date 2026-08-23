@@ -27,6 +27,7 @@ import { createGraphqlIntegrationOptimistic } from "./atoms";
 import { GraphqlIntegrationFields } from "./GraphqlIntegrationFields";
 import { graphqlAuthMethodInputsFromPlacements } from "./auth-method-config";
 import type { GraphqlAuthMethodInput } from "../sdk/types";
+import { graphqlPresets } from "../sdk/presets";
 
 // v2 GraphQL add flow: register the integration with its declared auth-method
 // LIST (the shared `AuthMethodListEditor` — GraphQL stays header/query apiKey;
@@ -42,7 +43,9 @@ export default function AddGraphqlIntegration(props: {
   onComplete: (slug?: string) => void;
   onCancel: () => void;
   initialUrl?: string;
+  initialPreset?: string;
 }) {
+  const preset = graphqlPresets.find((candidate) => candidate.id === props.initialPreset);
   const [endpoint, setEndpoint] = useState(props.initialUrl ?? "");
   const [description, setDescription] = useState("");
   const identity = useIntegrationIdentity({
@@ -111,6 +114,7 @@ export default function AddGraphqlIntegration(props: {
         endpoint: trimmedEndpoint,
         slug,
         name: displayName,
+        ...(preset?.icon ? { iconUrl: preset.icon } : {}),
         ...(description.trim().length > 0 ? { description: description.trim() } : {}),
         ...(authenticationTemplate.length > 0
           ? { authenticationTemplate: [...authenticationTemplate] }

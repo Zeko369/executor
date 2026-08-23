@@ -12,6 +12,8 @@ import {
   ToolResult,
   definePlugin,
   HealthCheckSpec,
+  IntegrationIconUrl,
+  integrationIconUrlFromUrl,
   mergeAuthTemplates,
   sha256Hex,
   tool,
@@ -98,6 +100,8 @@ export interface OpenApiSpecConfig {
   /** Agent-visible description (defaults to the spec's `info.description`,
    *  then the title). */
   readonly description?: string;
+  /** Optional explicit artwork; otherwise derived from the first API server. */
+  readonly iconUrl?: string;
   readonly baseUrl?: string;
   /** Static headers applied to every request (no secret material). */
   readonly headers?: Record<string, string>;
@@ -313,6 +317,7 @@ const AddIntegrationInputSchema = Schema.Struct({
   slug: Schema.optional(Schema.String),
   name: Schema.optional(Schema.String),
   description: Schema.optional(Schema.String),
+  iconUrl: Schema.optional(IntegrationIconUrl),
   baseUrl: Schema.optional(Schema.String),
   headers: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   queryParams: Schema.optional(Schema.Record(Schema.String, Schema.String)),
@@ -822,7 +827,11 @@ export const openApiPlugin = definePlugin<
           //     end with nowhere to paste a credential)
           // An explicit input always wins; for auth, an explicit EMPTY array
           // means "no auth methods" and suppresses the derivation.
-          const explicitBaseUrl = config.baseUrl ?? resolved.baseUrl;
+          // The add UI intentionally submits an empty string when the user
+          // leaves the optional override blank. Treat that as omitted so the
+          // spec's first server still drives derived metadata (including the
+          // persisted icon) without baking it into config as an override.
+          const explicitBaseUrl = (config.baseUrl?.trim() || undefined) ?? resolved.baseUrl;
           const needsDerivedBaseUrl = explicitBaseUrl == null;
           const needsDerivedAuth = config.authenticationTemplate == null;
           const preview =
@@ -921,6 +930,10 @@ export const openApiPlugin = definePlugin<
                   compiled?.description ??
                   compiled?.title ??
                   resolvedSlug,
+                iconUrl:
+                  config.iconUrl ??
+                  integrationIconUrlFromUrl(effectiveBaseUrl ?? resolved.specUrl) ??
+                  undefined,
                 config: integrationConfig satisfies OpenApiIntegrationConfig as IntegrationConfig,
                 canRemove: true,
                 canRefresh: integrationConfig.specUrl != null,
@@ -1246,6 +1259,7 @@ export const openApiPlugin = definePlugin<
                   slug: input.slug,
                   name: input.name,
                   description: input.description,
+                  iconUrl: input.iconUrl,
                   baseUrl: input.baseUrl,
                   headers: input.headers,
                   queryParams: input.queryParams,

@@ -1,5 +1,46 @@
+import { Schema } from "effect";
+import { getDomain } from "tldts";
+
 import type { IntegrationSlug } from "./ids";
 import type { OAuthTokenClientAuth, OAuthTokenRequestSignature } from "./oauth-client";
+
+export const INTEGRATION_ICON_URL_MAX_LENGTH = 2_048;
+
+/** User-supplied integration artwork is loaded by the browser, so only
+ * absolute HTTP(S) URLs without embedded credentials are accepted. */
+export const isIntegrationIconUrl = (value: string): boolean => {
+  const trimmed = value.trim();
+  if (!URL.canParse(trimmed)) return false;
+  const parsed = new URL(trimmed);
+  return (
+    (parsed.protocol === "https:" || parsed.protocol === "http:") &&
+    parsed.username.length === 0 &&
+    parsed.password.length === 0
+  );
+};
+
+export const IntegrationIconUrl = Schema.String.check(
+  Schema.isMaxLength(INTEGRATION_ICON_URL_MAX_LENGTH),
+  Schema.makeFilter((value) =>
+    isIntegrationIconUrl(value)
+      ? undefined
+      : "Expected an absolute HTTP(S) image URL without embedded credentials",
+  ),
+);
+
+/** The persisted automatic icon for endpoint-backed integrations. Keeping the
+ * proxy URL on the catalog row preserves the exact brand the add preview found,
+ * even when the plugin's later display URL is a spec document or Gist. */
+export const integrationIconUrlFromUrl = (
+  url: string | null | undefined,
+  size = 32,
+): string | null => {
+  if (!url) return null;
+  const trimmed = url.trim();
+  const domain = URL.canParse(trimmed) ? getDomain(new URL(trimmed).hostname) : getDomain(trimmed);
+  if (!domain) return null;
+  return `https://integrations.sh/logo/${domain}?sz=${size * 2}`;
+};
 
 /* Core knows only an integration's catalog identity — slug + description + which
  * plugin (`kind`) owns it. The type-specific shape (openapi auth templates + spec,
@@ -107,6 +148,8 @@ export interface Integration {
   /** Declared auth methods derived from the owning plugin's stored config (a
    *  derived projection, not a DB column). Always present, possibly empty. */
   readonly authMethods: readonly AuthMethodDescriptor[];
+  /** User-curated or automatically discovered remote icon URL. */
+  readonly iconUrl?: string;
   /** Non-secret display URL derived by the owning plugin from opaque config.
    *  Used for catalog favicons; never includes credentials or plugin config. */
   readonly displayUrl?: string;
@@ -183,6 +226,8 @@ export interface RegisterIntegrationInput {
    *  (legacy callers registered with description-as-name). */
   readonly name?: string;
   readonly description: string;
+  /** Remote icon URL. Endpoint-backed plugins derive a default when omitted. */
+  readonly iconUrl?: string;
   /** Opaque plugin config (auth templates, spec ref, mcp url, …). */
   readonly config: IntegrationConfig;
   readonly canRemove?: boolean;

@@ -148,6 +148,10 @@ export const coreTables = defineTables({
       // until a user/spec supplies one (cloud clears the old duplicated title
       // to NULL in 0006).
       description: nullableTextColumn("description"),
+      // Core-owned display artwork. This stays outside plugin config so every
+      // integration kind shares one editable icon contract and plugin config
+      // rewrites cannot silently strip a user's override.
+      icon_url: nullableTextColumn("icon_url"),
       config: nullableJsonColumn("config"),
       // The declared health check (HealthCheckSpec JSON): which authenticated
       // operation a connection runs to prove its credential is alive and whose

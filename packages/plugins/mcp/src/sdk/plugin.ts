@@ -11,7 +11,9 @@ import {
   ConnectionName,
   definePlugin,
   IntegrationAlreadyExistsError,
+  IntegrationIconUrl,
   IntegrationSlug,
+  integrationIconUrlFromUrl,
   mergeAuthTemplates,
   OAuthClientSlug,
   tool,
@@ -181,6 +183,7 @@ const McpRemoteServerInputSchema = Schema.Struct({
   name: Schema.String,
   /** Agent-visible catalog description. Defaults to the display name. */
   description: Schema.optional(Schema.String),
+  iconUrl: Schema.optional(IntegrationIconUrl),
   endpoint: Schema.String,
   remoteTransport: Schema.optional(McpRemoteTransport),
   headers: Schema.optional(Schema.Record(Schema.String, Schema.String)),
@@ -197,6 +200,7 @@ const McpStdioServerInputSchema = Schema.Struct({
   transport: Schema.Literal("stdio"),
   name: Schema.String,
   description: Schema.optional(Schema.String),
+  iconUrl: Schema.optional(IntegrationIconUrl),
   command: Schema.String,
   args: Schema.optional(Schema.Array(Schema.String)),
   /** DECLARE the secret env vars this server needs, by NAME. Their values are
@@ -921,6 +925,11 @@ export const mcpPlugin = definePlugin((options?: McpPluginOptions) => {
               slug: slugFrom(slug),
               name: input.name,
               description: input.description?.trim() || input.name,
+              iconUrl:
+                input.iconUrl ??
+                (input.transport === "stdio"
+                  ? undefined
+                  : (integrationIconUrlFromUrl(input.endpoint) ?? undefined)),
               config,
               canRemove: true,
               canRefresh: true,

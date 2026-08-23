@@ -325,6 +325,20 @@ describe("graphqlPlugin real protocol server", () => {
     }),
   );
 
+  it.effect("persists an automatic icon derived from the GraphQL endpoint", () =>
+    Effect.gen(function* () {
+      const executor = yield* makeExecutor();
+      yield* executor.graphql.addIntegration({
+        endpoint: "https://api.linear.app/graphql",
+        slug: "linear_graph",
+        name: "Linear",
+      });
+
+      const integration = yield* executor.integrations.get(IntegrationSlug.make("linear_graph"));
+      expect(integration?.iconUrl).toBe("https://integrations.sh/logo/linear.app?sz=64");
+    }),
+  );
+
   it.effect("uses the executor HttpClient layer for connection-time introspection", () =>
     Effect.gen(function* () {
       const seen: string[] = [];

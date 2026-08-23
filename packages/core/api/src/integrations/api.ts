@@ -14,6 +14,7 @@ import {
   HealthCheckCandidate,
   HealthCheckSpec,
   IntegrationDetectionResult,
+  IntegrationIconUrl,
   IntegrationNotFoundError,
   IntegrationRemovalNotAllowedError,
   IntegrationSlug,
@@ -88,6 +89,8 @@ const IntegrationResponse = Schema.Struct({
   /** Declared auth methods derived from the owning plugin's stored config.
    *  Always present (possibly empty) so the client never handles absence. */
   authMethods: Schema.Array(AuthMethodDescriptorSchema),
+  /** User-curated or automatically discovered remote icon URL. */
+  iconUrl: Schema.optional(Schema.String),
   /** Non-secret URL derived from opaque integration config for favicons. */
   displayUrl: Schema.optional(Schema.String),
   /** Catalog family derived from opaque integration config for grouped display. */
@@ -97,6 +100,8 @@ const IntegrationResponse = Schema.Struct({
 const UpdateIntegrationPayload = Schema.Struct({
   name: Schema.optional(Schema.String),
   description: Schema.optional(Schema.String),
+  /** Null clears the override and returns rendering to URL-derived fallback. */
+  iconUrl: Schema.optional(Schema.NullOr(IntegrationIconUrl)),
 });
 
 const DetectRequest = Schema.Struct({

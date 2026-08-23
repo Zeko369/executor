@@ -1,26 +1,19 @@
 import { BoxIcon } from "lucide-react";
 import { useState } from "react";
 import type { IntegrationPlugin } from "@executor-js/sdk/client";
-import { getDomain } from "tldts";
+import { integrationIconUrlFromUrl } from "@executor-js/sdk/shared";
 
 // ---------------------------------------------------------------------------
 // IntegrationFavicon — renders a small favicon derived from an integration URL.
 // Falls back to a neutral icon if the URL is missing or the image fails to load.
 // ---------------------------------------------------------------------------
 
-const integrationFaviconDomain = (url: string | undefined): string | null => {
-  if (!url) return null;
-  return getDomain(url) ?? (URL.canParse(url) ? getDomain(new URL(url).hostname) : null);
-};
-
 // integrations.sh/logo proxies context.dev's Logo Link behind an edge cache
 // and is executor's single logo source. Fallbacks (Google's favicon service,
 // a letter placeholder for unknown domains) live inside the proxy, so clients
 // never resolve favicons against a third party directly.
 export function integrationFaviconUrl(url: string | undefined, size: number): string | null {
-  const domain = integrationFaviconDomain(url);
-  if (!domain) return null;
-  return `https://integrations.sh/logo/${domain}?sz=${size * 2}`;
+  return integrationIconUrlFromUrl(url, size);
 }
 
 export function integrationLocalIconUrl(integrationId: string | undefined): string | null {
@@ -101,9 +94,11 @@ export function integrationPresetIconUrl(
     readonly kind: string;
     readonly name?: string;
     readonly url?: string;
+    readonly iconUrl?: string;
   },
   integrationPlugins: readonly IntegrationPlugin[],
 ): string | null {
+  if (integration.iconUrl) return integration.iconUrl;
   const pluginKey = KIND_TO_PLUGIN_KEY[integration.kind] ?? integration.kind;
   const plugin = integrationPlugins.find((p) => p.key === pluginKey);
   const presets = plugin?.presets ?? [];
@@ -179,6 +174,7 @@ export function IntegrationFavicon({
       width={size}
       height={size}
       loading="lazy"
+      referrerPolicy="no-referrer"
       onError={() =>
         setFailedSrcs((current) => (current.includes(src) ? current : [...current, src]))
       }

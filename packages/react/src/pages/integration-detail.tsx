@@ -663,6 +663,8 @@ export function IntegrationDetailPage(props: {
         open={editSheetOpen}
         name={integrationData?.name || namespace}
         description={integrationData?.description ?? ""}
+        iconUrl={integrationData?.iconUrl}
+        displayUrl={integrationData?.displayUrl}
         {...(editPlugin?.editSheet ? { pluginSection: editPlugin.editSheet } : {})}
         onOpenChange={setEditSheetOpen}
       />

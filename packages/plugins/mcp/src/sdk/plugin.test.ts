@@ -39,6 +39,22 @@ import { makeAnnotationsMcpServer, serveMcpServer } from "../testing";
 
 const TEMPLATE = AuthTemplateSlug.make("none");
 
+it.effect("persists an automatic icon derived from a remote MCP endpoint", () =>
+  Effect.gen(function* () {
+    const executor = yield* createExecutor(
+      makeTestConfig({ plugins: [memoryCredentialsPlugin(), mcpPlugin()] as const }),
+    );
+    yield* executor.mcp.addServer({
+      name: "Linear MCP",
+      endpoint: "https://mcp.linear.app/mcp",
+      slug: "linear_mcp",
+    });
+
+    const integration = yield* executor.integrations.get(IntegrationSlug.make("linear_mcp"));
+    expect(integration?.iconUrl).toBe("https://integrations.sh/logo/linear.app?sz=64");
+  }),
+);
+
 const JsonRpcId = Schema.Union([Schema.String, Schema.Number, Schema.Null]);
 const JsonRpcRequest = Schema.Struct({
   id: Schema.optional(JsonRpcId),

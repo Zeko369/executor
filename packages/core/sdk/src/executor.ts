@@ -277,7 +277,11 @@ export type Executor<TPlugins extends readonly AnyPlugin[] = readonly []> = {
     readonly get: (slug: IntegrationSlug) => Effect.Effect<Integration | null, StorageFailure>;
     readonly update: (
       slug: IntegrationSlug,
-      patch: { readonly name?: string; readonly description?: string },
+      patch: {
+        readonly name?: string;
+        readonly description?: string;
+        readonly iconUrl?: string | null;
+      },
     ) => Effect.Effect<void, IntegrationNotFoundError | StorageFailure>;
     readonly remove: (
       slug: IntegrationSlug,
@@ -767,6 +771,7 @@ const rowToIntegration = (
   canRemove: Boolean(row.can_remove),
   canRefresh: Boolean(row.can_refresh),
   authMethods,
+  ...(row.icon_url ? { iconUrl: row.icon_url } : {}),
   ...(display?.url ? { displayUrl: display.url } : {}),
   ...(display?.family ? { family: display.family } : {}),
 });
@@ -2389,6 +2394,7 @@ export const createExecutor = <const TPlugins extends readonly AnyPlugin[] = rea
                 plugin_id: pluginId,
                 name: input.name ?? existing.name ?? null,
                 description: input.description,
+                icon_url: input.iconUrl ?? existing.icon_url ?? null,
                 config,
                 can_remove: input.canRemove ?? Boolean(existing.can_remove),
                 can_refresh: input.canRefresh ?? Boolean(existing.can_refresh),
@@ -2403,6 +2409,7 @@ export const createExecutor = <const TPlugins extends readonly AnyPlugin[] = rea
             plugin_id: pluginId,
             name: input.name ?? null,
             description: input.description,
+            icon_url: input.iconUrl ?? null,
             config,
             can_remove: input.canRemove ?? true,
             can_refresh: input.canRefresh ?? false,
@@ -2425,6 +2432,7 @@ export const createExecutor = <const TPlugins extends readonly AnyPlugin[] = rea
       patch: {
         readonly name?: string;
         readonly description?: string;
+        readonly iconUrl?: string | null;
         readonly config?: IntegrationConfig;
       },
     ): Effect.Effect<void, StorageFailure> =>
@@ -2433,6 +2441,7 @@ export const createExecutor = <const TPlugins extends readonly AnyPlugin[] = rea
         const set: Record<string, unknown> = { updated_at: now };
         if (patch.name !== undefined) set.name = patch.name;
         if (patch.description !== undefined) set.description = patch.description;
+        if (patch.iconUrl !== undefined) set.icon_url = patch.iconUrl;
         if (patch.config !== undefined) {
           set.config = patch.config;
           // A config change can change the derived tools. The writer can only
@@ -2449,7 +2458,11 @@ export const createExecutor = <const TPlugins extends readonly AnyPlugin[] = rea
 
     const integrationsUpdatePublic = (
       slug: IntegrationSlug,
-      patch: { readonly name?: string; readonly description?: string },
+      patch: {
+        readonly name?: string;
+        readonly description?: string;
+        readonly iconUrl?: string | null;
+      },
     ): Effect.Effect<void, IntegrationNotFoundError | StorageFailure> =>
       Effect.gen(function* () {
         const existing = yield* findIntegrationRow(slug);

@@ -229,7 +229,13 @@ function IntegrationList(props: { pathname: string; onNavigate?: () => void }) {
               >
                 <IntegrationFavicon
                   icon={integrationPresetIconUrl(
-                    { id: slug, kind: integration.kind, name, url: integration.displayUrl },
+                    {
+                      id: slug,
+                      kind: integration.kind,
+                      name,
+                      url: integration.displayUrl,
+                      iconUrl: integration.iconUrl,
+                    },
                     integrationPlugins,
                   )}
                   integrationId={slug}

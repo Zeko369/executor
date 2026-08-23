@@ -1,7 +1,11 @@
 import { Suspense, useCallback, useEffect, useRef, useState, type ComponentType } from "react";
 import { useAtomSet } from "@effect/atom-react";
 import * as Exit from "effect/Exit";
-import { type Connection, type IntegrationSlug } from "@executor-js/sdk/shared";
+import {
+  isIntegrationIconUrl,
+  type Connection,
+  type IntegrationSlug,
+} from "@executor-js/sdk/shared";
 import type { EditSheetApplyResult, EditSheetSectionProps } from "@executor-js/sdk/client";
 import { toast } from "sonner";
 
@@ -11,6 +15,7 @@ import { trackEvent } from "../api/analytics";
 import { messageFromExit } from "../api/error-reporting";
 import { Button } from "./button";
 import { Input } from "./input";
+import { IntegrationFavicon } from "./integration-favicon";
 import { Label } from "./label";
 import {
   Sheet,
@@ -162,6 +167,10 @@ export function IntegrationEditSheet(props: {
   readonly name: string;
   /** The integration's agent-visible description. */
   readonly description: string;
+  /** User-curated or automatically discovered artwork. */
+  readonly iconUrl?: string;
+  /** Plugin-derived URL used as the fallback when the icon is cleared. */
+  readonly displayUrl?: string;
   /** Plugin-owned configuration (e.g. OpenAPI spec update) rendered below the
    *  shared fields — the same surface the plugin's add flow configures. The
    *  section STAGES its change and reports an apply thunk via
@@ -173,6 +182,7 @@ export function IntegrationEditSheet(props: {
   const doUpdate = useAtomSet(updateIntegration, { mode: "promiseExit" });
   const [nameDraft, setNameDraft] = useState(props.name);
   const [descriptionDraft, setDescriptionDraft] = useState(props.description);
+  const [iconUrlDraft, setIconUrlDraft] = useState(props.iconUrl ?? "");
   const [saving, setSaving] = useState(false);
   // The plugin section's staged change — a thunk that applies it and resolves
   // to a summary line. Held in a ref: it changes per keystroke in the section
@@ -186,16 +196,24 @@ export function IntegrationEditSheet(props: {
     if (props.open) {
       setNameDraft(props.name);
       setDescriptionDraft(props.description);
+      setIconUrlDraft(props.iconUrl ?? "");
     }
-  }, [props.open, props.name, props.description]);
+  }, [props.open, props.name, props.description, props.iconUrl]);
+
+  const nextIconUrl = iconUrlDraft.trim();
+  const iconUrlInvalid = nextIconUrl.length > 0 && !isIntegrationIconUrl(nextIconUrl);
 
   const handleSave = async () => {
     const nextName = nameDraft.trim();
-    if (nextName.length === 0) return;
+    if (nextName.length === 0 || iconUrlInvalid) return;
     setSaving(true);
     const exit = await doUpdate({
       params: { slug: props.slug },
-      payload: { name: nextName, description: descriptionDraft.trim() },
+      payload: {
+        name: nextName,
+        description: descriptionDraft.trim(),
+        iconUrl: nextIconUrl.length > 0 ? nextIconUrl : null,
+      },
       reactivityKeys: integrationWriteKeys,
     });
     trackEvent("integration_renamed", {
@@ -231,9 +249,9 @@ export function IntegrationEditSheet(props: {
         <SheetHeader>
           <SheetTitle>Edit integration</SheetTitle>
           <SheetDescription>
-            The name is what people see; the description is agent-visible context — agents read it
-            when browsing integrations and as fallback context on connections without one of their
-            own.
+            The name and icon are what people see; the description is agent-visible context — agents
+            read it when browsing integrations and as fallback context on connections without one of
+            their own.
           </SheetDescription>
         </SheetHeader>
 
@@ -265,6 +283,43 @@ export function IntegrationEditSheet(props: {
             />
           </div>
 
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor="integration-icon-url">Icon URL</Label>
+              <span
+                className="flex size-5 shrink-0 items-center justify-center"
+                role="img"
+                aria-label="Icon preview"
+                title="Icon preview"
+              >
+                <IntegrationFavicon
+                  icon={iconUrlInvalid || nextIconUrl.length === 0 ? null : nextIconUrl}
+                  integrationId={slug}
+                  url={props.displayUrl}
+                  size={20}
+                />
+              </span>
+            </div>
+            <Input
+              id="integration-icon-url"
+              type="url"
+              value={iconUrlDraft}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setIconUrlDraft(e.target.value)}
+              placeholder="https://example.com/icon.png"
+              disabled={saving}
+              aria-invalid={iconUrlInvalid}
+            />
+            {iconUrlInvalid ? (
+              <p className="text-xs text-destructive">
+                Enter an absolute HTTP(S) image URL without embedded credentials.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Loaded remotely. Clear it to use the integration&apos;s URL-derived fallback.
+              </p>
+            )}
+          </div>
+
           <AgentPreview
             label="What agents see"
             line={
@@ -284,7 +339,7 @@ export function IntegrationEditSheet(props: {
         <SheetFooter>
           <Button
             onClick={() => void handleSave()}
-            disabled={saving || nameDraft.trim().length === 0}
+            disabled={saving || nameDraft.trim().length === 0 || iconUrlInvalid}
           >
             {saving ? "Saving..." : "Save"}
           </Button>

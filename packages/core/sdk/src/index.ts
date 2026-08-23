@@ -90,7 +90,14 @@ export type {
   IntegrationDisplayDescriptor,
   RegisterIntegrationInput,
 } from "./integration";
-export { freshCustomAuthSlug, mergeAuthTemplates } from "./integration";
+export {
+  INTEGRATION_ICON_URL_MAX_LENGTH,
+  IntegrationIconUrl,
+  freshCustomAuthSlug,
+  integrationIconUrlFromUrl,
+  isIntegrationIconUrl,
+  mergeAuthTemplates,
+} from "./integration";
 export type {
   Connection,
   ConnectionRef,

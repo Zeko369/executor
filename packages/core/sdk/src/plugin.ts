@@ -173,6 +173,7 @@ export interface PluginCtx<TStore = unknown> {
         patch: {
           readonly name?: string;
           readonly description?: string;
+          readonly iconUrl?: string | null;
           readonly config?: IntegrationConfig;
         },
       ) => Effect.Effect<void, StorageFailure>;

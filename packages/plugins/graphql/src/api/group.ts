@@ -1,6 +1,10 @@
 import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 import { Schema } from "effect";
-import { InternalError, IntegrationAlreadyExistsError } from "@executor-js/sdk/shared";
+import {
+  IntegrationIconUrl,
+  InternalError,
+  IntegrationAlreadyExistsError,
+} from "@executor-js/sdk/shared";
 
 import { GraphqlIntrospectionError, GraphqlExtractionError } from "../sdk/errors";
 import { GraphqlAuthMethod, GraphqlAuthMethodInput } from "../sdk/types";
@@ -22,6 +26,7 @@ const AddIntegrationPayload = Schema.Struct({
   slug: Schema.optional(Schema.String),
   name: Schema.optional(Schema.String),
   description: Schema.optional(Schema.String),
+  iconUrl: Schema.optional(IntegrationIconUrl),
   introspectionJson: Schema.optional(Schema.String),
   headers: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   queryParams: Schema.optional(Schema.Record(Schema.String, Schema.String)),

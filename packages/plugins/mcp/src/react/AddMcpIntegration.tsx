@@ -313,6 +313,7 @@ export default function AddMcpIntegration(props: {
         payload: {
           transport: "remote" as const,
           name: displayName,
+          ...(preset?.icon ? { iconUrl: preset.icon } : {}),
           ...(resolvedDescription.trim().length > 0
             ? { description: resolvedDescription.trim() }
             : {}),
@@ -331,7 +332,7 @@ export default function AddMcpIntegration(props: {
       }
       return exit.value.slug;
     },
-    [doAddServer, probe, remoteIdentity, resolvedDescription, state.url],
+    [doAddServer, preset?.icon, probe, remoteIdentity, resolvedDescription, state.url],
   );
 
   const handleAddRemote = useCallback(async () => {
@@ -362,6 +363,7 @@ export default function AddMcpIntegration(props: {
       payload: {
         transport: "stdio" as const,
         name: displayName,
+        ...(preset?.icon ? { iconUrl: preset.icon } : {}),
         ...(slug ? { slug } : {}),
         command: cmd,
         args: parseStdioArgs(stdioArgs),
@@ -375,7 +377,7 @@ export default function AddMcpIntegration(props: {
       return;
     }
     props.onComplete(exit.value.slug);
-  }, [stdioCommand, stdioArgs, stdioEnvVars, stdioIdentity, doAddServer, props]);
+  }, [stdioCommand, stdioArgs, stdioEnvVars, stdioIdentity, doAddServer, preset?.icon, props]);
 
   // ---- Render ----
 
