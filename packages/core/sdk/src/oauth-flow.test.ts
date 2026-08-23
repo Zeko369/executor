@@ -12,7 +12,11 @@ import {
 } from "./ids";
 import { authToolFailure } from "./auth-tool-failure";
 import { decodeOAuthCallbackState } from "./oauth";
-import { OAuthStartError } from "./oauth-client";
+import {
+  OAuthStartError,
+  type OAuthTokenClientAuth,
+  type OAuthTokenRequestSignature,
+} from "./oauth-client";
 import { missingGrantedOAuthScopes } from "./oauth-service";
 import { definePlugin } from "./plugin";
 import { makeTestWorkspaceHarness, memoryCredentialsPlugin } from "./test-config";
@@ -27,6 +31,17 @@ const INTEG = IntegrationSlug.make("acme");
 const TEMPLATE = AuthTemplateSlug.make("oauth");
 const CLIENT = OAuthClientSlug.make("acme-app");
 
+interface AcmeOAuthConfig {
+  readonly scopes: readonly string[];
+  readonly scopeSeparator?: string;
+  readonly omitScopeOnRefresh?: boolean;
+  readonly authorizationParams?: Readonly<Record<string, string>>;
+  readonly tokenRequestParams?: Readonly<Record<string, string>>;
+  readonly tokenResponsePath?: readonly string[];
+  readonly tokenClientAuth?: OAuthTokenClientAuth;
+  readonly tokenRequestSignature?: OAuthTokenRequestSignature;
+}
+
 const oauthPlugin = definePlugin(() => ({
   id: "acme" as const,
   storage: () => ({}),
@@ -35,14 +50,23 @@ const oauthPlugin = definePlugin(() => ({
       tools: [{ name: ToolName.make("whoami"), description: "whoami" }],
     }),
   describeAuthMethods: (record) => {
-    const config = record.config as { readonly scopes?: readonly string[] } | null;
+    const config = record.config as AcmeOAuthConfig | null;
     return [
       {
         id: "oauth",
         label: "OAuth2",
         kind: "oauth" as const,
         template: String(TEMPLATE),
-        oauth: { scopes: config?.scopes ?? [] },
+        oauth: {
+          scopes: config?.scopes ?? [],
+          scopeSeparator: config?.scopeSeparator,
+          omitScopeOnRefresh: config?.omitScopeOnRefresh,
+          authorizationParams: config?.authorizationParams,
+          tokenRequestParams: config?.tokenRequestParams,
+          tokenResponsePath: config?.tokenResponsePath,
+          tokenClientAuth: config?.tokenClientAuth,
+          tokenRequestSignature: config?.tokenRequestSignature,
+        },
       },
     ];
   },
@@ -54,11 +78,11 @@ const oauthPlugin = definePlugin(() => ({
       checkedAt: Date.now(),
     }),
   extension: (ctx) => ({
-    seed: (scopes: readonly string[] = []) =>
+    seed: (input: readonly string[] | AcmeOAuthConfig = []) =>
       ctx.core.integrations.register({
         slug: INTEG,
         description: "Acme",
-        config: { scopes },
+        config: Array.isArray(input) ? { scopes: input } : input,
       }),
   }),
 }))();
@@ -121,7 +145,86 @@ const routeTokenEndpointToLoopback = (
   };
 };
 
+const wrapTokenResponses = (): (() => void) => {
+  // oxlint-disable-next-line executor/no-raw-fetch -- test boundary: oauth4webapi reads the global fetch at request time.
+  const originalFetch = globalThis.fetch;
+  const patched: typeof fetch = async (input, init) => {
+    const response = await originalFetch(input as Parameters<typeof fetch>[0], init);
+    const requestUrl =
+      typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (new URL(requestUrl).pathname !== "/token" || !response.ok) return response;
+    const token = (await response.clone().json()) as unknown;
+    return new Response(JSON.stringify({ body: token }), {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+  };
+  // oxlint-disable-next-line executor/no-raw-fetch -- test boundary: install the doubled fetch (see above).
+  globalThis.fetch = patched;
+  return () => {
+    // oxlint-disable-next-line executor/no-raw-fetch -- test boundary: restore the original fetch.
+    globalThis.fetch = originalFetch;
+  };
+};
+
 describe("oauth.start / oauth.complete", () => {
+  it.effect("applies template-declared scope separators and authorization parameters", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const server = yield* serveOAuthTestServer({ scopes: ["read", "write"] });
+        const { executor, config } = yield* makeTestWorkspaceHarness({ plugins });
+        yield* executor.acme.seed({
+          scopes: ["read", "write"],
+          scopeSeparator: ",",
+          authorizationParams: { audience: "urn:example:health" },
+          tokenClientAuth: "none",
+          tokenRequestSignature: {
+            algorithm: "hmac-sha256",
+            signedParams: ["action", "client_id", "nonce"],
+            signatureParam: "signature",
+          },
+        });
+        yield* executor.oauth.createClient({
+          owner: "org",
+          slug: CLIENT,
+          authorizationUrl: server.authorizationEndpoint,
+          tokenUrl: server.tokenEndpoint,
+          grant: "authorization_code",
+          clientId: "test-client",
+          clientSecret: "test-secret",
+        });
+
+        const started = yield* executor.oauth.start({
+          owner: "org",
+          client: CLIENT,
+          clientOwner: "org",
+          name: ConnectionName.make("configured-wire"),
+          integration: INTEG,
+          template: TEMPLATE,
+        });
+        expect(started.status).toBe("redirect");
+        if (started.status !== "redirect") return;
+        const url = new URL(started.authorizationUrl);
+        expect(url.searchParams.get("scope")).toBe("read,write");
+        expect(url.searchParams.get("audience")).toBe("urn:example:health");
+        const session = yield* Effect.promise(() =>
+          config.db.findFirst("oauth_session", { where: (b) => b("state", "=", started.state) }),
+        );
+        expect(session?.payload).toMatchObject({
+          oauthFlowOptions: {
+            tokenClientAuth: "none",
+            tokenRequestSignature: {
+              algorithm: "hmac-sha256",
+              signedParams: ["action", "client_id", "nonce"],
+              signatureParam: "signature",
+            },
+          },
+        });
+      }),
+    ),
+  );
+
   it.effect(
     "createClient → start (redirect) → complete mints a connection + tools, executable",
     () =>
@@ -568,7 +671,10 @@ describe("oauth.start / oauth.complete", () => {
         });
         const harness = yield* makeTestWorkspaceHarness({ plugins });
         const { executor, config } = harness;
-        yield* executor.acme.seed(["openid", "email", "profile", "read"]);
+        yield* executor.acme.seed({
+          scopes: ["openid", "email", "profile", "read"],
+          omitScopeOnRefresh: true,
+        });
 
         yield* executor.oauth.createClient({
           owner: "org",
@@ -604,6 +710,7 @@ describe("oauth.start / oauth.complete", () => {
             set: { expires_at: Date.now() - 60_000 },
           }),
         );
+        yield* server.clearRequests;
 
         yield* executor.execute(ToolAddress.make("tools.acme.org.main.whoami"), {});
         const refreshed = yield* executor.connections.get({
@@ -612,6 +719,9 @@ describe("oauth.start / oauth.complete", () => {
           name: ConnectionName.make("main"),
         });
         expect(refreshed?.identityLabel).toBe("alice@example.com");
+        const refresh = refreshGrants(yield* server.requests)[0];
+        expect(refresh).toBeDefined();
+        expect(new URLSearchParams(refresh!.body).has("scope")).toBe(false);
       }),
     ),
   );
@@ -812,6 +922,73 @@ describe("oauth.start / oauth.complete", () => {
 });
 
 describe("oauth token refresh in resolveConnectionValue", () => {
+  it.effect(
+    "uses template-declared token request fields and response path for connect + refresh",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const server = yield* serveOAuthTestServer({ scopes: ["read"] });
+          const restoreFetch = yield* Effect.acquireRelease(
+            Effect.sync(wrapTokenResponses),
+            (restore) => Effect.sync(restore),
+          );
+          void restoreFetch;
+          const { executor, config } = yield* makeTestWorkspaceHarness({ plugins });
+          yield* executor.acme.seed({
+            scopes: ["read"],
+            tokenRequestParams: { action: "requesttoken" },
+            tokenResponsePath: ["body"],
+          });
+          yield* executor.oauth.createClient({
+            owner: "org",
+            slug: CLIENT,
+            authorizationUrl: server.authorizationEndpoint,
+            tokenUrl: server.tokenEndpoint,
+            grant: "authorization_code",
+            clientId: "test-client",
+            clientSecret: "test-secret",
+          });
+          const started = yield* executor.oauth.start({
+            owner: "org",
+            client: CLIENT,
+            clientOwner: "org",
+            name: ConnectionName.make("configured-wire"),
+            integration: INTEG,
+            template: TEMPLATE,
+          });
+          expect(started.status).toBe("redirect");
+          if (started.status !== "redirect") return;
+          const callback = yield* server.completeAuthorizationCodeFlow({
+            authorizationUrl: started.authorizationUrl,
+          });
+          yield* executor.oauth.complete({ state: started.state, code: callback.code });
+
+          yield* Effect.promise(() =>
+            config.db.updateMany("connection", {
+              where: (b) => b("name", "=", "configuredWire"),
+              set: { expires_at: Date.now() - 60_000 },
+            }),
+          );
+          const result = (yield* executor.execute(
+            ToolAddress.make("tools.acme.org.configuredWire.whoami"),
+            {},
+          )) as { token: string };
+          expect(yield* server.acceptsAccessToken(result.token)).toBe(true);
+
+          const tokenRequests = (yield* server.requests).filter(
+            (request) => request.path === "/token" && request.method === "POST",
+          );
+          expect(tokenRequests).toHaveLength(2);
+          expect(
+            tokenRequests.every((request) => request.body.includes("action=requesttoken")),
+          ).toBe(true);
+          expect(
+            tokenRequests.some((request) => request.body.includes("grant_type=refresh_token")),
+          ).toBe(true);
+        }),
+      ),
+  );
+
   it.effect("an expired access token is refreshed before resolving", () =>
     Effect.scoped(
       Effect.gen(function* () {

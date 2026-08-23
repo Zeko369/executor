@@ -19,6 +19,8 @@
 import { Data, Effect, Option, Predicate, Schema } from "effect";
 import * as oauth from "oauth4webapi";
 
+import type { OAuthTokenClientAuth, OAuthTokenRequestSignature } from "./oauth-client";
+
 // ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
@@ -149,6 +151,13 @@ export const buildAuthorizationUrl = (input: BuildAuthorizationUrlInput): string
   // separator. Callers targeting a legacy comma-separated provider pass
   // `scopeSeparator` explicitly (see the field's JSDoc).
   const separator = input.scopeSeparator ?? " ";
+  // Apply provider extension parameters first so they can never override the
+  // protocol fields below (client_id, redirect_uri, state, PKCE, ...).
+  if (input.extraParams) {
+    for (const [k, v] of Object.entries(input.extraParams)) {
+      url.searchParams.set(k, v);
+    }
+  }
   url.searchParams.set("client_id", input.clientId);
   url.searchParams.set("redirect_uri", input.redirectUrl);
   url.searchParams.set("response_type", "code");
@@ -160,11 +169,6 @@ export const buildAuthorizationUrl = (input: BuildAuthorizationUrlInput): string
   url.searchParams.set("code_challenge", input.codeChallenge);
   if (input.resource) {
     url.searchParams.set("resource", input.resource);
-  }
-  if (input.extraParams) {
-    for (const [k, v] of Object.entries(input.extraParams)) {
-      url.searchParams.set(k, v);
-    }
   }
   return url.toString();
 };
@@ -469,7 +473,7 @@ const hostnameForTelemetry = (url: string): string => URL.parse(url)?.hostname ?
 // oauth4webapi adapter helpers
 // ---------------------------------------------------------------------------
 
-export type ClientAuthMethod = "body" | "basic";
+export type ClientAuthMethod = OAuthTokenClientAuth;
 
 /**
  * The token-endpoint client-auth transport used when a caller doesn't specify
@@ -546,17 +550,164 @@ const pickClientAuth = (
   clientSecret: string | null | undefined,
   method: ClientAuthMethod,
 ): oauth.ClientAuth => {
-  if (!clientSecret) return oauth.None();
+  if (!clientSecret || method === "none") return oauth.None();
   return method === "basic"
     ? oauth.ClientSecretBasic(clientSecret)
     : oauth.ClientSecretPost(clientSecret);
 };
 
+const RESERVED_TOKEN_REQUEST_PARAMS = new Set([
+  "grant_type",
+  "client_id",
+  "client_secret",
+  "code",
+  "redirect_uri",
+  "code_verifier",
+  "refresh_token",
+  "scope",
+  "resource",
+]);
+
+/** Add provider extension fields without allowing integration config to
+ * replace OAuth protocol or credential parameters. */
+const addTokenRequestParams = (
+  params: URLSearchParams,
+  additions: Readonly<Record<string, string>> | undefined,
+): void => {
+  if (!additions) return;
+  for (const [key, value] of Object.entries(additions)) {
+    if (!RESERVED_TOKEN_REQUEST_PARAMS.has(key)) params.set(key, value);
+  }
+};
+
+const hmacSha256Hex = async (secret: string, message: string): Promise<string> => {
+  const key = await globalThis.crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await globalThis.crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(message),
+  );
+  return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
+};
+
+const signatureMessage = (
+  params: URLSearchParams,
+  names: readonly string[],
+  separator: string,
+): string =>
+  names
+    .map((name) => {
+      const value = params.get(name);
+      if (value === null) {
+        // oxlint-disable-next-line executor/no-try-catch-or-throw -- boundary: async token preparation is wrapped by the public helper's Effect.tryPromise.
+        throw new OAuth2Error({ message: `OAuth token signature parameter ${name} is missing` });
+      }
+      return value;
+    })
+    .join(separator);
+
+const selectJsonPath = (input: unknown, path: readonly string[], label: string): unknown => {
+  let selected = input;
+  for (const segment of path) {
+    if (typeof selected !== "object" || selected === null || !(segment in selected)) {
+      // oxlint-disable-next-line executor/no-try-catch-or-throw -- boundary: async token preparation is wrapped by the public helper's Effect.tryPromise.
+      throw new OAuth2Error({ message: `${label} path ${path.join(".")} was not found` });
+    }
+    selected = (selected as Record<string, unknown>)[segment];
+  }
+  return selected;
+};
+
+const prepareSignedTokenRequest = async (input: {
+  readonly params: URLSearchParams;
+  readonly clientId: string;
+  readonly clientSecret: string | null | undefined;
+  readonly signature: OAuthTokenRequestSignature | undefined;
+  readonly timeoutMs: number | undefined;
+  readonly endpointUrlPolicy: OAuthEndpointUrlPolicy | undefined;
+  readonly fetch: typeof globalThis.fetch | undefined;
+}): Promise<void> => {
+  if (!input.signature) return;
+  if (!input.clientSecret) {
+    // oxlint-disable-next-line executor/no-try-catch-or-throw -- boundary: async token preparation is wrapped by the public helper's Effect.tryPromise.
+    throw new OAuth2Error({ message: "OAuth token request signing requires a client secret" });
+  }
+
+  const separator = input.signature.separator ?? ",";
+  input.params.set("client_id", input.clientId);
+  const preflight = input.signature.preflight;
+  if (preflight) {
+    assertSupportedOAuthEndpointUrl(
+      preflight.url,
+      "OAuth token signature preflight URL",
+      input.endpointUrlPolicy,
+    );
+    const preflightParams = new URLSearchParams(preflight.params);
+    preflightParams.set("client_id", input.clientId);
+    if (preflight.timestampParam) {
+      preflightParams.set(preflight.timestampParam, String(Math.round(Date.now() / 1000)));
+    }
+    preflightParams.set(
+      preflight.signatureParam,
+      await hmacSha256Hex(
+        input.clientSecret,
+        signatureMessage(preflightParams, preflight.signedParams, separator),
+      ),
+    );
+    // oxlint-disable-next-line executor/no-raw-fetch -- boundary: provider-declared OAuth preflight uses the same validated endpoint policy and timeout as token exchange.
+    const requestFetch = input.fetch ?? globalThis.fetch;
+    const response = await requestFetch(preflight.url, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: preflightParams,
+      redirect: "error",
+      signal: AbortSignal.timeout(input.timeoutMs ?? OAUTH2_DEFAULT_TIMEOUT_MS),
+    });
+    const body = (await response.json()) as unknown;
+    const oneTimeValue = selectJsonPath(
+      body,
+      preflight.responsePath,
+      "OAuth token signature preflight response",
+    );
+    if (typeof oneTimeValue !== "string" || oneTimeValue.length === 0) {
+      // oxlint-disable-next-line executor/no-try-catch-or-throw -- boundary: async token preparation is wrapped by the public helper's Effect.tryPromise.
+      throw new OAuth2Error({
+        message: "OAuth token signature preflight did not return a non-empty string",
+      });
+    }
+    input.params.set(preflight.resultParam, oneTimeValue);
+  }
+  input.params.set(
+    input.signature.signatureParam,
+    await hmacSha256Hex(
+      input.clientSecret,
+      signatureMessage(input.params, input.signature.signedParams, separator),
+    ),
+  );
+};
+
 const normalizedTokenScope = (
   as: oauth.AuthorizationServer,
   scope: string | undefined,
+  scopeSeparator?: string,
 ): string | undefined => {
   if (scope === undefined || scope.trim().length === 0) return undefined;
+  if (scopeSeparator !== undefined && scopeSeparator !== " ") {
+    const normalized = scope
+      .split(scopeSeparator)
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .join(" ");
+    return normalized.length > 0 ? normalized : undefined;
+  }
   const tokenEndpoint = typeof as.token_endpoint === "string" ? URL.parse(as.token_endpoint) : null;
   const isSlackTokenEndpoint =
     tokenEndpoint?.hostname.toLowerCase() === "slack.com" &&
@@ -574,12 +725,17 @@ const normalizedTokenScope = (
 const tokenResponseFrom = (
   as: oauth.AuthorizationServer,
   r: oauth.TokenEndpointResponse,
+  scopeSeparator?: string,
 ): OAuth2TokenResponse => ({
   access_token: r.access_token,
   token_type: r.token_type,
   refresh_token: r.refresh_token,
   expires_in: typeof r.expires_in === "number" ? r.expires_in : undefined,
-  scope: normalizedTokenScope(as, typeof r.scope === "string" ? r.scope : undefined),
+  scope: normalizedTokenScope(
+    as,
+    typeof r.scope === "string" ? r.scope : undefined,
+    scopeSeparator,
+  ),
 });
 
 const JwtClaims = Schema.Record(Schema.String, Schema.Unknown);
@@ -624,6 +780,38 @@ export const idTokenIdentityLabel = (idToken: string | undefined): string | unde
 type StrippedTokenResponse = {
   readonly response: Response;
   readonly idTokenIdentityLabel?: string;
+};
+
+/** Select a nested token object from a non-standard JSON envelope. The path is
+ * declared by the integration's OAuth template (for example `["body"]`), so
+ * core remains provider-agnostic while oauth4webapi still validates the
+ * selected object as an RFC token response. */
+const selectTokenResponsePath = async (
+  response: Response,
+  path: readonly string[] | undefined,
+): Promise<Response> => {
+  if (!path || path.length === 0) return response;
+  let selected: unknown = await response.clone().json();
+  for (const segment of path) {
+    if (typeof selected !== "object" || selected === null || !(segment in selected)) {
+      // oxlint-disable-next-line executor/no-try-catch-or-throw -- boundary: this async response adapter runs inside the public helper's Effect.tryPromise and throws the typed domain error that catch preserves.
+      throw new OAuth2Error({
+        message: `OAuth token response path ${path.join(".")} was not found`,
+      });
+    }
+    selected = (selected as Record<string, unknown>)[segment];
+  }
+  if (typeof selected !== "object" || selected === null) {
+    // oxlint-disable-next-line executor/no-try-catch-or-throw -- boundary: this async response adapter runs inside the public helper's Effect.tryPromise and throws the typed domain error that catch preserves.
+    throw new OAuth2Error({
+      message: `OAuth token response path ${path.join(".")} did not resolve to an object`,
+    });
+  }
+  return new Response(JSON.stringify(selected), {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
 };
 
 const NestedAuthedUserScope = Schema.Struct({
@@ -712,12 +900,15 @@ const processTokenEndpointResponse = async (
   as: oauth.AuthorizationServer,
   client: oauth.Client,
   response: Response,
+  responsePath?: readonly string[],
+  scopeSeparator?: string,
 ): Promise<OAuth2TokenResponse> => {
-  const stripped = await stripIdToken(response);
+  const stripped = await stripIdToken(await selectTokenResponsePath(response, responsePath));
   const providerUserGrant = await nestedAuthedUserGrant(stripped.response);
   const parsed = tokenResponseFrom(
     as,
     await oauth.processGenericTokenEndpointResponse(as, client, stripped.response),
+    scopeSeparator,
   );
   const token =
     parsed.scope === undefined && providerUserGrant !== undefined
@@ -754,6 +945,15 @@ export type ExchangeAuthorizationCodeInput = {
    *  the token request when the client knows the resource it intends
    *  to call. */
   readonly resource?: string;
+  /** Provider extension fields added to the token request form. OAuth protocol
+   *  and credential fields are reserved and cannot be overridden. */
+  readonly tokenRequestParams?: Readonly<Record<string, string>>;
+  /** Object-key path selecting an RFC token response inside a JSON envelope. */
+  readonly tokenResponsePath?: readonly string[];
+  /** Delimiter used by providers that echo granted scopes in the same
+   * non-standard form accepted by their authorization endpoint. */
+  readonly scopeSeparator?: string;
+  readonly tokenRequestSignature?: OAuthTokenRequestSignature;
   readonly timeoutMs?: number;
   readonly endpointUrlPolicy?: OAuthEndpointUrlPolicy;
   readonly fetch?: typeof globalThis.fetch;
@@ -783,9 +983,19 @@ export const exchangeAuthorizationCode = (
         redirect_uri: input.redirectUrl,
         code_verifier: input.codeVerifier,
       });
+      addTokenRequestParams(params, input.tokenRequestParams);
       if (input.resource) {
         params.set("resource", input.resource);
       }
+      await prepareSignedTokenRequest({
+        params,
+        clientId: input.clientId,
+        clientSecret: input.clientSecret,
+        signature: input.tokenRequestSignature,
+        timeoutMs: input.timeoutMs,
+        endpointUrlPolicy: input.endpointUrlPolicy,
+        fetch: input.fetch,
+      });
       const response = await oauth.genericTokenEndpointRequest(
         as,
         client,
@@ -799,7 +1009,13 @@ export const exchangeAuthorizationCode = (
           input.fetch,
         ),
       );
-      return await processTokenEndpointResponse(as, client, response);
+      return await processTokenEndpointResponse(
+        as,
+        client,
+        response,
+        input.tokenResponsePath,
+        input.scopeSeparator,
+      );
     },
     catch: (cause) => cause,
   }).pipe(
@@ -826,6 +1042,9 @@ export type ExchangeClientCredentialsInput = {
   /** RFC 8707 Resource Indicator. MCP Authorization 2025-06-18 requires this
    *  on token requests when the client knows the protected resource. */
   readonly resource?: string;
+  readonly tokenRequestParams?: Readonly<Record<string, string>>;
+  readonly tokenResponsePath?: readonly string[];
+  readonly tokenRequestSignature?: OAuthTokenRequestSignature;
   readonly timeoutMs?: number;
   readonly endpointUrlPolicy?: OAuthEndpointUrlPolicy;
   readonly fetch?: typeof globalThis.fetch;
@@ -843,12 +1062,22 @@ export const exchangeClientCredentials = (
         input.clientAuth ?? DEFAULT_CLIENT_AUTH_METHOD,
       );
       const params = new URLSearchParams();
+      addTokenRequestParams(params, input.tokenRequestParams);
       if (input.scopes && input.scopes.length > 0) {
         params.set("scope", input.scopes.join(input.scopeSeparator ?? " "));
       }
       if (input.resource) {
         params.set("resource", input.resource);
       }
+      await prepareSignedTokenRequest({
+        params,
+        clientId: input.clientId,
+        clientSecret: input.clientSecret,
+        signature: input.tokenRequestSignature,
+        timeoutMs: input.timeoutMs,
+        endpointUrlPolicy: input.endpointUrlPolicy,
+        fetch: input.fetch,
+      });
       const response = await oauth.clientCredentialsGrantRequest(
         as,
         client,
@@ -861,8 +1090,12 @@ export const exchangeClientCredentials = (
           input.fetch,
         ),
       );
-      const result = await oauth.processClientCredentialsResponse(as, client, response);
-      return tokenResponseFrom(as, result);
+      const result = await oauth.processClientCredentialsResponse(
+        as,
+        client,
+        await selectTokenResponsePath(response, input.tokenResponsePath),
+      );
+      return tokenResponseFrom(as, result, input.scopeSeparator);
     },
     catch: (cause) => cause,
   }).pipe(
@@ -893,6 +1126,9 @@ export type RefreshAccessTokenInput = {
    *  refresh requests so the new access token's audience is bound to
    *  the same resource. */
   readonly resource?: string;
+  readonly tokenRequestParams?: Readonly<Record<string, string>>;
+  readonly tokenResponsePath?: readonly string[];
+  readonly tokenRequestSignature?: OAuthTokenRequestSignature;
   readonly timeoutMs?: number;
   readonly endpointUrlPolicy?: OAuthEndpointUrlPolicy;
   readonly fetch?: typeof globalThis.fetch;
@@ -913,12 +1149,22 @@ export const refreshAccessToken = (
         input.clientAuth ?? DEFAULT_CLIENT_AUTH_METHOD,
       );
       const extraParams = new URLSearchParams();
+      addTokenRequestParams(extraParams, input.tokenRequestParams);
       if (input.scopes && input.scopes.length > 0) {
         extraParams.set("scope", input.scopes.join(input.scopeSeparator ?? " "));
       }
       if (input.resource) {
         extraParams.set("resource", input.resource);
       }
+      await prepareSignedTokenRequest({
+        params: extraParams,
+        clientId: input.clientId,
+        clientSecret: input.clientSecret,
+        signature: input.tokenRequestSignature,
+        timeoutMs: input.timeoutMs,
+        endpointUrlPolicy: input.endpointUrlPolicy,
+        fetch: input.fetch,
+      });
       const additionalParameters =
         Array.from(extraParams.keys()).length > 0 ? extraParams : undefined;
       const response = await oauth.refreshTokenGrantRequest(
@@ -939,9 +1185,10 @@ export const refreshAccessToken = (
       const result = await oauth.processRefreshTokenResponse(
         as,
         client,
-        (await stripIdToken(response)).response,
+        (await stripIdToken(await selectTokenResponsePath(response, input.tokenResponsePath)))
+          .response,
       );
-      return tokenResponseFrom(as, result);
+      return tokenResponseFrom(as, result, input.scopeSeparator);
     },
     catch: (cause) => cause,
   }).pipe(

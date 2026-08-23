@@ -7,6 +7,8 @@ import {
   IntegrationDetectionResult,
   IntegrationNotFoundError,
   IntegrationSlug,
+  OAuthTokenClientAuthSchema,
+  OAuthTokenRequestSignatureSchema,
   ToolResult,
   definePlugin,
   HealthCheckSpec,
@@ -291,6 +293,13 @@ const AuthenticationSchema = Schema.Union([
     tokenUrl: Schema.String,
     resource: Schema.optional(Schema.NullOr(Schema.String)),
     scopes: Schema.Array(Schema.String),
+    scopeSeparator: Schema.optional(Schema.String),
+    omitScopeOnRefresh: Schema.optional(Schema.Boolean),
+    authorizationParams: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+    tokenRequestParams: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+    tokenResponsePath: Schema.optional(Schema.Array(Schema.String)),
+    tokenClientAuth: Schema.optional(OAuthTokenClientAuthSchema),
+    tokenRequestSignature: Schema.optional(OAuthTokenRequestSignatureSchema),
     supportsClientIdMetadataDocument: Schema.optional(Schema.Boolean),
   }),
   // Credential methods are authored request-shaped - the ONE apikey input
@@ -587,6 +596,15 @@ export const describeOpenApiAuthMethods = (
             tokenUrl: template.tokenUrl,
             resource: template.resource ?? null,
             scopes: template.scopes,
+            scopeSeparator: template.scopeSeparator,
+            ...(template.omitScopeOnRefresh !== undefined
+              ? { omitScopeOnRefresh: template.omitScopeOnRefresh }
+              : {}),
+            authorizationParams: template.authorizationParams,
+            tokenRequestParams: template.tokenRequestParams,
+            tokenResponsePath: template.tokenResponsePath,
+            tokenClientAuth: template.tokenClientAuth,
+            tokenRequestSignature: template.tokenRequestSignature,
             supportsClientIdMetadataDocument: template.supportsClientIdMetadataDocument,
           },
         };

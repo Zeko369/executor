@@ -922,7 +922,7 @@ export const buildRequest = Effect.fn("OpenApi.buildRequest")(function* (
 
   const resolvedPath = yield* resolvePath(operation.pathTemplate, args, operation.parameters);
 
-  const path = resolvedPath.startsWith("/") ? resolvedPath : `/${resolvedPath}`;
+  const path = requestPathFromResolvedTemplate(resolvedPath);
 
   let request = HttpClientRequest.make(operation.method.toUpperCase() as "GET")(path);
 
@@ -1085,6 +1085,23 @@ export const buildRequest = Effect.fn("OpenApi.buildRequest")(function* (
 
   return request;
 });
+
+/**
+ * OpenAPI requires path-item keys to be relative paths, but some published
+ * specifications use absolute endpoint URLs (occasionally padded with trailing
+ * whitespace to distinguish several operations for the same endpoint). Treat
+ * those keys as endpoint paths at invocation time so the applicable server is
+ * not prepended to a second absolute URL. Relative, spec-compliant paths keep
+ * their existing behavior.
+ */
+export const requestPathFromResolvedTemplate = (resolvedPath: string): string => {
+  const trimmed = resolvedPath.trim();
+  if (URL.canParse(trimmed)) {
+    const url = new URL(trimmed);
+    return `${url.pathname}${url.search}`;
+  }
+  return resolvedPath.startsWith("/") ? resolvedPath : `/${resolvedPath}`;
+};
 
 // ---------------------------------------------------------------------------
 // Public API — invoke a single operation

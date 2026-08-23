@@ -43,6 +43,15 @@ const oauthAuthMethod = (template: Extract<Authentication, { kind: "oauth2" }>):
       tokenUrl: template.tokenUrl,
       resource: template.resource ?? null,
       scopes: template.scopes,
+      scopeSeparator: template.scopeSeparator,
+      ...(template.omitScopeOnRefresh !== undefined
+        ? { omitScopeOnRefresh: template.omitScopeOnRefresh }
+        : {}),
+      authorizationParams: template.authorizationParams,
+      tokenRequestParams: template.tokenRequestParams,
+      tokenResponsePath: template.tokenResponsePath,
+      tokenClientAuth: template.tokenClientAuth,
+      tokenRequestSignature: template.tokenRequestSignature,
       supportsClientIdMetadataDocument: template.supportsClientIdMetadataDocument,
     },
   };
@@ -82,6 +91,15 @@ export function editorValueFromAuthentication(template: Authentication): AuthTem
       tokenUrl: template.tokenUrl ?? "",
       resource: template.resource ?? null,
       scopes: template.scopes ?? [],
+      scopeSeparator: template.scopeSeparator,
+      ...(template.omitScopeOnRefresh !== undefined
+        ? { omitScopeOnRefresh: template.omitScopeOnRefresh }
+        : {}),
+      authorizationParams: template.authorizationParams,
+      tokenRequestParams: template.tokenRequestParams,
+      tokenResponsePath: template.tokenResponsePath,
+      tokenClientAuth: template.tokenClientAuth,
+      tokenRequestSignature: template.tokenRequestSignature,
       supportsClientIdMetadataDocument: template.supportsClientIdMetadataDocument,
     };
   }
@@ -99,6 +117,23 @@ const oauthTemplateFromEditorValue = (
   tokenUrl: value.tokenUrl,
   resource: value.resource ?? null,
   scopes: [...value.scopes],
+  ...(value.scopeSeparator !== undefined ? { scopeSeparator: value.scopeSeparator } : {}),
+  ...(value.omitScopeOnRefresh !== undefined
+    ? { omitScopeOnRefresh: value.omitScopeOnRefresh }
+    : {}),
+  ...(value.authorizationParams !== undefined
+    ? { authorizationParams: value.authorizationParams }
+    : {}),
+  ...(value.tokenRequestParams !== undefined
+    ? { tokenRequestParams: value.tokenRequestParams }
+    : {}),
+  ...(value.tokenResponsePath !== undefined
+    ? { tokenResponsePath: [...value.tokenResponsePath] }
+    : {}),
+  ...(value.tokenClientAuth !== undefined ? { tokenClientAuth: value.tokenClientAuth } : {}),
+  ...(value.tokenRequestSignature !== undefined
+    ? { tokenRequestSignature: value.tokenRequestSignature }
+    : {}),
   ...(value.supportsClientIdMetadataDocument === true
     ? { supportsClientIdMetadataDocument: true }
     : {}),
