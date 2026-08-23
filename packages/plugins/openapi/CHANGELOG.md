@@ -1,5 +1,23 @@
 # @executor-js/plugin-openapi
 
+## 1.5.43
+
+### Patch Changes
+
+- [#1660](https://github.com/UsefulSoftwareCo/executor/pull/1660) [`c11bef2`](https://github.com/UsefulSoftwareCo/executor/commit/c11bef2cd049db7bbf51b15e18761b14acccb534) Thanks [@RhysSullivan](https://github.com/RhysSullivan)! - **Cloudflare ships as MCP-only, with code mode opted out**
+
+  The Cloudflare OpenAPI preset is gone from the default catalog; the MCP preset is the one Cloudflare entry. Its endpoint now pins `?codemode=false` because Cloudflare's MCP server otherwise hides the tool catalog behind a single code-execution tool, and executor already provides the code-execution surface. Hand-entered `mcp.cloudflare.com` URLs missing the opt-out get an inline warning in the add flow telling the user to append `?codemode=false`.
+
+- [#1669](https://github.com/UsefulSoftwareCo/executor/pull/1669) [`46cea2c`](https://github.com/UsefulSoftwareCo/executor/commit/46cea2cbb1f414ae58ac876819a51b11967909a6) Thanks [@RhysSullivan](https://github.com/RhysSullivan)! - Request Gmail's basic-settings scope alongside full mailbox access so Google integrations can create and manage Gmail filters without including domain-admin-only sharing settings.
+
+- [`bde673c`](https://github.com/UsefulSoftwareCo/executor/commit/bde673c3b78992aef87c83c119f957050b9c0c6a) Thanks [@Zeko369](https://github.com/Zeko369)! - Support OAuth providers with nonstandard scope delimiters, token request fields, nested token-response envelopes, declarative HMAC-signed preflights, and refresh requests that must omit the optional scope field through provider-agnostic integration-template configuration. Normalize absolute OpenAPI path keys before invocation so malformed published specifications do not produce doubled request URLs.
+
+- Updated dependencies [[`2bdbedf`](https://github.com/UsefulSoftwareCo/executor/commit/2bdbedf257f54d7c209e8c856c618174c10d6bb3), [`bde673c`](https://github.com/UsefulSoftwareCo/executor/commit/bde673c3b78992aef87c83c119f957050b9c0c6a), [`3d37769`](https://github.com/UsefulSoftwareCo/executor/commit/3d37769ebc04d8f7146d45b658738cd53557e5bd)]:
+  - @executor-js/react@1.4.63
+  - @executor-js/sdk@1.5.43
+  - @executor-js/api@1.4.63
+  - @executor-js/config@1.5.43
+
 ## 1.5.42
 
 ### Patch Changes

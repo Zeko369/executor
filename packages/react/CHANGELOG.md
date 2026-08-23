@@ -1,5 +1,23 @@
 # @executor-js/react
 
+## 1.4.63
+
+### Patch Changes
+
+- [#1703](https://github.com/UsefulSoftwareCo/executor/pull/1703) [`2bdbedf`](https://github.com/UsefulSoftwareCo/executor/commit/2bdbedf257f54d7c209e8c856c618174c10d6bb3) Thanks [@RhysSullivan](https://github.com/RhysSullivan)! - **A slow OAuth discovery no longer kills the connect with no popup and no error**
+
+  The transparent connect flows opened the sign-in window only after their setup round trips had answered: DCR after probe and dynamic registration, CIMD after minting the client, reconnect after starting the session. `window.open` needs transient user activation, which browsers expire a few seconds after the click, so once the API was slow enough the browser refused the window and the connect ended with nothing on screen but the button returning to "Connect". Every MCP integration takes that path.
+
+  The window is now claimed on the click itself and navigated when the authorization URL arrives, however long that takes, and it is closed again on the paths that end without signing in (failed probe, no registration endpoint, rejected registration, failed client mint) as well as on cancel and unmount. A window the browser does refuse is now reported instead of swallowed: the flows stop before their round trips, and the sign-in error renders above the dialog footer, where the automatic flows can actually show it, rather than inside a method tab panel they never render.
+
+- [`bde673c`](https://github.com/UsefulSoftwareCo/executor/commit/bde673c3b78992aef87c83c119f957050b9c0c6a) Thanks [@Zeko369](https://github.com/Zeko369)! - Support OAuth providers with nonstandard scope delimiters, token request fields, nested token-response envelopes, declarative HMAC-signed preflights, and refresh requests that must omit the optional scope field through provider-agnostic integration-template configuration. Normalize absolute OpenAPI path keys before invocation so malformed published specifications do not produce doubled request URLs.
+
+- [`3d37769`](https://github.com/UsefulSoftwareCo/executor/commit/3d37769ebc04d8f7146d45b658738cd53557e5bd) Thanks [@Zeko369](https://github.com/Zeko369)! - Add a shortcut beside the sidebar integration list that opens the existing integration picker.
+
+- Updated dependencies [[`bde673c`](https://github.com/UsefulSoftwareCo/executor/commit/bde673c3b78992aef87c83c119f957050b9c0c6a)]:
+  - @executor-js/sdk@1.5.43
+  - @executor-js/api@1.4.63
+
 ## 1.4.62
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @executor-js/sdk
 
+## 1.5.43
+
+### Patch Changes
+
+- [`bde673c`](https://github.com/UsefulSoftwareCo/executor/commit/bde673c3b78992aef87c83c119f957050b9c0c6a) Thanks [@Zeko369](https://github.com/Zeko369)! - Support OAuth providers with nonstandard scope delimiters, token request fields, nested token-response envelopes, declarative HMAC-signed preflights, and refresh requests that must omit the optional scope field through provider-agnostic integration-template configuration. Normalize absolute OpenAPI path keys before invocation so malformed published specifications do not produce doubled request URLs.
+
 ## 1.5.42
 
 ### Patch Changes

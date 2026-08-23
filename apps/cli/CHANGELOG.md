@@ -1,5 +1,17 @@
 # executor
 
+## 1.5.43
+
+### Patch Changes
+
+- [`5c2b43e`](https://github.com/UsefulSoftwareCo/executor/commit/5c2b43eda803d893dbc7141fb6bcae38759a9e67) Thanks [@Zeko369](https://github.com/Zeko369)! - Match policy rules against generated tool-name prefixes, with `**` support for tool names nested under any number of groups. Policies can now cover families such as `get*` or `delete*` without enumerating every imported API operation.
+
+- Updated dependencies [[`bde673c`](https://github.com/UsefulSoftwareCo/executor/commit/bde673c3b78992aef87c83c119f957050b9c0c6a)]:
+  - @executor-js/sdk@1.5.43
+  - @executor-js/api@1.4.63
+  - @executor-js/local@1.5.43
+  - @executor-js/runtime-quickjs@1.5.43
+
 ## 1.5.42
 
 ### Patch Changes
