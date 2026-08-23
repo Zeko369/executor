@@ -16,7 +16,11 @@
 // ---------------------------------------------------------------------------
 
 import { AuthTemplateSlug } from "@executor-js/sdk/shared";
-import type { AuthMethodDescriptor } from "@executor-js/sdk/shared";
+import type {
+  AuthMethodDescriptor,
+  OAuthTokenClientAuth,
+  OAuthTokenRequestSignature,
+} from "@executor-js/sdk/shared";
 
 export type Carrier = "header" | "query" | "env";
 
@@ -56,6 +60,13 @@ export interface AuthMethodOAuth {
   readonly tokenUrl?: string;
   readonly resource?: string | null;
   readonly scopes?: readonly string[];
+  readonly scopeSeparator?: string;
+  readonly omitScopeOnRefresh?: boolean;
+  readonly authorizationParams?: Readonly<Record<string, string>>;
+  readonly tokenRequestParams?: Readonly<Record<string, string>>;
+  readonly tokenResponsePath?: readonly string[];
+  readonly tokenClientAuth?: OAuthTokenClientAuth;
+  readonly tokenRequestSignature?: OAuthTokenRequestSignature;
   /** RFC 7591 registration endpoint, when the provider advertises Dynamic
    *  Client Registration. Lets the form offer a one-click "Register
    *  automatically" path that needs no pasted client id/secret. */
@@ -173,6 +184,15 @@ function authMethodFromDescriptor(descriptor: AuthMethodDescriptor): AuthMethod 
         tokenUrl: oauth?.tokenUrl,
         resource: oauth?.resource ?? null,
         scopes: oauth?.scopes,
+        scopeSeparator: oauth?.scopeSeparator,
+        ...(oauth?.omitScopeOnRefresh !== undefined
+          ? { omitScopeOnRefresh: oauth.omitScopeOnRefresh }
+          : {}),
+        authorizationParams: oauth?.authorizationParams,
+        tokenRequestParams: oauth?.tokenRequestParams,
+        tokenResponsePath: oauth?.tokenResponsePath,
+        tokenClientAuth: oauth?.tokenClientAuth,
+        tokenRequestSignature: oauth?.tokenRequestSignature,
         registrationEndpoint: oauth?.registrationEndpoint,
         discoveryUrl: oauth?.discoveryUrl,
         supportsDynamicRegistration: oauth?.supportsDynamicRegistration,

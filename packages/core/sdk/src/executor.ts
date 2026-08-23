@@ -1908,6 +1908,18 @@ export const createExecutor = <const TPlugins extends readonly AnyPlugin[] = rea
           ? String(row.oauth_scope).split(/\s+/).filter(Boolean)
           : [];
 
+        // Resolve non-standard OAuth wire behavior from the connection's
+        // selected integration template. This is configuration, not provider
+        // code: any integration can declare a scope delimiter, token form
+        // extensions, or a nested token-response path.
+        const integrationRow = yield* findIntegrationRow(IntegrationSlug.make(row.integration));
+        const authMethods = integrationRow ? describeAuthMethodsForRow(integrationRow) : [];
+        const selectedAuthMethod =
+          authMethods.find((method) => method.template === String(row.template)) ??
+          (authMethods.length === 1 ? authMethods[0] : undefined);
+        const oauthFlow =
+          selectedAuthMethod?.kind === "oauth" ? selectedAuthMethod.oauth : undefined;
+
         // Refresh against the region the code was redeemed at when one was
         // recorded at connect time (multi-site providers like Datadog), else
         // the oauth_client's configured token endpoint.
@@ -1925,6 +1937,11 @@ export const createExecutor = <const TPlugins extends readonly AnyPlugin[] = rea
                 clientId: clientRow.clientId,
                 clientSecret,
                 scopes: grantedScopes,
+                scopeSeparator: oauthFlow?.scopeSeparator,
+                tokenRequestParams: oauthFlow?.tokenRequestParams,
+                tokenResponsePath: oauthFlow?.tokenResponsePath,
+                clientAuth: oauthFlow?.tokenClientAuth,
+                tokenRequestSignature: oauthFlow?.tokenRequestSignature,
                 resource: clientRow.resource ?? undefined,
                 endpointUrlPolicy: config.oauthEndpointUrlPolicy,
                 fetch: config.fetch,
@@ -1955,7 +1972,12 @@ export const createExecutor = <const TPlugins extends readonly AnyPlugin[] = rea
                   clientId: clientRow.clientId,
                   clientSecret,
                   refreshToken,
-                  scopes: grantedScopes,
+                  scopes: oauthFlow?.omitScopeOnRefresh === true ? undefined : grantedScopes,
+                  scopeSeparator: oauthFlow?.scopeSeparator,
+                  tokenRequestParams: oauthFlow?.tokenRequestParams,
+                  tokenResponsePath: oauthFlow?.tokenResponsePath,
+                  clientAuth: oauthFlow?.tokenClientAuth,
+                  tokenRequestSignature: oauthFlow?.tokenRequestSignature,
                   // RFC 8707: keep the re-minted token bound to the same resource
                   // (MCP servers require this on refresh).
                   resource: clientRow.resource ?? undefined,
@@ -4596,12 +4618,35 @@ export const createExecutor = <const TPlugins extends readonly AnyPlugin[] = rea
               methods.find((m: AuthMethodDescriptor) => m.template === String(template)) ??
               (methods.length === 1 ? methods[0] : undefined);
             const oauth = selected?.kind === "oauth" ? selected.oauth : undefined;
+            const flowOptions = {
+              ...(oauth?.scopeSeparator !== undefined
+                ? { scopeSeparator: oauth.scopeSeparator }
+                : {}),
+              ...(oauth?.omitScopeOnRefresh !== undefined
+                ? { omitScopeOnRefresh: oauth.omitScopeOnRefresh }
+                : {}),
+              ...(oauth?.authorizationParams !== undefined
+                ? { authorizationParams: oauth.authorizationParams }
+                : {}),
+              ...(oauth?.tokenRequestParams !== undefined
+                ? { tokenRequestParams: oauth.tokenRequestParams }
+                : {}),
+              ...(oauth?.tokenResponsePath !== undefined
+                ? { tokenResponsePath: oauth.tokenResponsePath }
+                : {}),
+              ...(oauth?.tokenClientAuth !== undefined
+                ? { tokenClientAuth: oauth.tokenClientAuth }
+                : {}),
+              ...(oauth?.tokenRequestSignature !== undefined
+                ? { tokenRequestSignature: oauth.tokenRequestSignature }
+                : {}),
+            };
             // Declared scopes win. Discover only when the selected method
             // declares none but names a source to discover them from (MCP).
             if (oauth?.scopes === undefined && oauth?.discoveryUrl !== undefined) {
-              return { kind: "discover" };
+              return { kind: "discover", ...flowOptions };
             }
-            return { kind: "scopes", scopes: oauth?.scopes ?? [] };
+            return { kind: "scopes", scopes: oauth?.scopes ?? [], ...flowOptions };
           }),
         ),
       httpClientLayer: config.httpClientLayer,

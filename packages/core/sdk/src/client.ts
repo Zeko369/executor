@@ -18,6 +18,7 @@ import {
   type ComponentType,
   type ReactNode,
 } from "react";
+import type { OAuthTokenClientAuth, OAuthTokenRequestSignature } from "./oauth-client";
 import { HttpApi } from "effect/unstable/httpapi";
 import type { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http";
@@ -130,6 +131,13 @@ export type IntegrationPresetAuthentication =
       readonly tokenUrl: string;
       readonly resource?: string | null;
       readonly scopes: readonly string[];
+      readonly scopeSeparator?: string;
+      readonly omitScopeOnRefresh?: boolean;
+      readonly authorizationParams?: Readonly<Record<string, string>>;
+      readonly tokenRequestParams?: Readonly<Record<string, string>>;
+      readonly tokenResponsePath?: readonly string[];
+      readonly tokenClientAuth?: OAuthTokenClientAuth;
+      readonly tokenRequestSignature?: OAuthTokenRequestSignature;
       readonly supportsClientIdMetadataDocument?: boolean;
     }
   | {

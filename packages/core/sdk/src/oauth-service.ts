@@ -36,6 +36,8 @@ import {
   OAuthRegisterDynamicError,
   OAuthSessionNotFoundError,
   OAuthStartError,
+  OAuthTokenClientAuthSchema,
+  OAuthTokenRequestSignatureSchema,
   firstPartyOAuthClientAllowsScopes,
   firstPartyOAuthClientSlug,
   isFirstPartyOAuthClientSlug,
@@ -113,9 +115,19 @@ export interface MintOAuthConnectionInput {
  *  empty set requests no scopes), or it declares none and the request scopes
  *  are discovered from the server's metadata at connect (`discover`, used by
  *  MCP). The two are mutually exclusive by construction. */
-export type OAuthScopePolicy =
-  | { readonly kind: "scopes"; readonly scopes: readonly string[] }
-  | { readonly kind: "discover" };
+const OAuthFlowOptionsSchema = Schema.Struct({
+  scopeSeparator: Schema.optional(Schema.String),
+  omitScopeOnRefresh: Schema.optional(Schema.Boolean),
+  authorizationParams: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  tokenRequestParams: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  tokenResponsePath: Schema.optional(Schema.Array(Schema.String)),
+  tokenClientAuth: Schema.optional(OAuthTokenClientAuthSchema),
+  tokenRequestSignature: Schema.optional(OAuthTokenRequestSignatureSchema),
+});
+export type OAuthFlowOptions = typeof OAuthFlowOptionsSchema.Type;
+
+export type OAuthScopePolicy = OAuthFlowOptions &
+  ({ readonly kind: "scopes"; readonly scopes: readonly string[] } | { readonly kind: "discover" });
 
 /** Everything the OAuth service needs from the executor: fuma access for the
  *  owned `oauth_client` / `oauth_session` tables, the default credential
@@ -276,16 +288,20 @@ export const missingGrantedOAuthScopes = (
 
 const decodeJsonPayload = Schema.decodeUnknownOption(Schema.UnknownFromJsonString);
 
+const decodeOAuthFlowOptions = Schema.decodeUnknownOption(OAuthFlowOptionsSchema);
+
+const decodedSessionPayload = (payload: unknown): unknown =>
+  typeof payload === "string"
+    ? decodeJsonPayload(payload).pipe(Option.getOrElse(() => payload))
+    : payload;
+
 /** Extract the persisted `requestedScopes` from an `oauth_session.payload`. The
  *  jsonColumn may surface as a parsed object (in-memory backends) or a JSON
  *  string (serialized backends); decode strings before reading. Returns `null`
  *  for legacy sessions written before `requestedScopes` was persisted, so
  *  `complete` can fall back to the client's scopes. */
 const requestedScopesFromPayload = (payload: unknown): readonly string[] | null => {
-  const decoded =
-    typeof payload === "string"
-      ? decodeJsonPayload(payload).pipe(Option.getOrElse(() => payload))
-      : payload;
+  const decoded = decodedSessionPayload(payload);
   if (decoded === null || typeof decoded !== "object") return null;
   const value = (decoded as Record<string, unknown>).requestedScopes;
   return Array.isArray(value) ? value.filter((s): s is string => typeof s === "string") : null;
@@ -295,14 +311,39 @@ const requestedScopesFromPayload = (payload: unknown): readonly string[] | null 
  *  (same-owner connects, or sessions written before this field), so `complete`
  *  falls back to the session owner. */
 const clientOwnerFromPayload = (payload: unknown): Owner | null => {
-  const decoded =
-    typeof payload === "string"
-      ? decodeJsonPayload(payload).pipe(Option.getOrElse(() => payload))
-      : payload;
+  const decoded = decodedSessionPayload(payload);
   if (decoded === null || typeof decoded !== "object") return null;
   const value = (decoded as Record<string, unknown>).clientOwner;
   return value === "user" || value === "org" ? value : null;
 };
+
+const oauthFlowOptionsFromPayload = (payload: unknown): OAuthFlowOptions => {
+  const decoded = decodedSessionPayload(payload);
+  if (decoded === null || typeof decoded !== "object") return {};
+  return decodeOAuthFlowOptions((decoded as Record<string, unknown>).oauthFlowOptions).pipe(
+    Option.getOrElse(() => ({})),
+  );
+};
+
+const flowOptionsFromPolicy = (policy: OAuthScopePolicy): OAuthFlowOptions => ({
+  ...(policy.scopeSeparator !== undefined ? { scopeSeparator: policy.scopeSeparator } : {}),
+  ...(policy.omitScopeOnRefresh !== undefined
+    ? { omitScopeOnRefresh: policy.omitScopeOnRefresh }
+    : {}),
+  ...(policy.authorizationParams !== undefined
+    ? { authorizationParams: policy.authorizationParams }
+    : {}),
+  ...(policy.tokenRequestParams !== undefined
+    ? { tokenRequestParams: policy.tokenRequestParams }
+    : {}),
+  ...(policy.tokenResponsePath !== undefined
+    ? { tokenResponsePath: policy.tokenResponsePath }
+    : {}),
+  ...(policy.tokenClientAuth !== undefined ? { tokenClientAuth: policy.tokenClientAuth } : {}),
+  ...(policy.tokenRequestSignature !== undefined
+    ? { tokenRequestSignature: policy.tokenRequestSignature }
+    : {}),
+});
 
 /** Narrow a stored `grant` string to the `OAuthGrant` union, or `null` when the
  *  value is neither known grant. EXPLICIT — there is no silent fallback to
@@ -1256,6 +1297,11 @@ export const makeOAuthService = (deps: OAuthServiceDeps): OAuthService => {
           clientId: client.clientId,
           clientSecret: client.clientSecret,
           scopes: requestedScopes,
+          scopeSeparator: scopePolicy.scopeSeparator,
+          tokenRequestParams: scopePolicy.tokenRequestParams,
+          tokenResponsePath: scopePolicy.tokenResponsePath,
+          clientAuth: scopePolicy.tokenClientAuth,
+          tokenRequestSignature: scopePolicy.tokenRequestSignature,
           resource: client.resource ?? undefined,
           endpointUrlPolicy: deps.endpointUrlPolicy,
           fetch,
@@ -1340,6 +1386,7 @@ export const makeOAuthService = (deps: OAuthServiceDeps): OAuthService => {
             owner: input.owner,
             clientOwner: input.clientOwner,
             requestedScopes: authorizationRequestedScopes,
+            oauthFlowOptions: flowOptionsFromPolicy(scopePolicy),
           },
           expires_at: expiresAt,
           created_at: now,
@@ -1353,13 +1400,17 @@ export const makeOAuthService = (deps: OAuthServiceDeps): OAuthService => {
             clientId: client.clientId,
             redirectUrl: flowRedirectUri,
             scopes: authorizationRequestedScopes,
+            scopeSeparator: scopePolicy.scopeSeparator,
             state: providerState,
             codeChallenge: challenge,
             resource: client.resource ?? undefined,
             // Provider quirks (Google: access_type=offline + prompt=consent) —
             // without these Google returns no refresh token and won't re-consent
             // to widen scopes on reconnect.
-            extraParams: providerAuthorizeExtras(client.authorizationUrl),
+            extraParams: {
+              ...providerAuthorizeExtras(client.authorizationUrl),
+              ...scopePolicy.authorizationParams,
+            },
             endpointUrlPolicy: deps.endpointUrlPolicy,
           }),
         catch: (cause) =>
@@ -1407,6 +1458,7 @@ export const makeOAuthService = (deps: OAuthServiceDeps): OAuthService => {
         // owner for same-owner connects.
         clientOwner:
           clientOwnerFromPayload(sessionRow.payload) ?? (String(sessionRow.owner) as Owner),
+        oauthFlowOptions: oauthFlowOptionsFromPayload(sessionRow.payload),
       };
 
       // Annotate as soon as the session resolves the flow's identity, so even
@@ -1478,6 +1530,11 @@ export const makeOAuthService = (deps: OAuthServiceDeps): OAuthService => {
         redirectUrl: session.redirectUrl,
         codeVerifier: session.pkceVerifier,
         code: input.code,
+        scopeSeparator: session.oauthFlowOptions.scopeSeparator,
+        tokenRequestParams: session.oauthFlowOptions.tokenRequestParams,
+        tokenResponsePath: session.oauthFlowOptions.tokenResponsePath,
+        clientAuth: session.oauthFlowOptions.tokenClientAuth,
+        tokenRequestSignature: session.oauthFlowOptions.tokenRequestSignature,
         resource: client.resource ?? undefined,
         endpointUrlPolicy: deps.endpointUrlPolicy,
         fetch,

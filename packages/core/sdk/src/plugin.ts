@@ -48,7 +48,11 @@ import type {
   IntegrationRemovalNotAllowedError,
   InvalidConnectionInputError,
 } from "./errors";
-import type { OAuthService } from "./oauth-client";
+import type {
+  OAuthService,
+  OAuthTokenClientAuth,
+  OAuthTokenRequestSignature,
+} from "./oauth-client";
 import type { CredentialProvider, ProviderEntry } from "./provider";
 import type { PluginStorageConfig, PluginStorageFacade } from "./plugin-storage";
 import type {
@@ -586,6 +590,13 @@ export type IntegrationPresetAuthentication =
       readonly tokenUrl: string;
       readonly resource?: string | null;
       readonly scopes: readonly string[];
+      readonly scopeSeparator?: string;
+      readonly omitScopeOnRefresh?: boolean;
+      readonly authorizationParams?: Readonly<Record<string, string>>;
+      readonly tokenRequestParams?: Readonly<Record<string, string>>;
+      readonly tokenResponsePath?: readonly string[];
+      readonly tokenClientAuth?: OAuthTokenClientAuth;
+      readonly tokenRequestSignature?: OAuthTokenRequestSignature;
       readonly supportsClientIdMetadataDocument?: boolean;
     }
   | {

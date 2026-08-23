@@ -25,6 +25,36 @@ import {
 
 export type OAuthGrant = "authorization_code" | "client_credentials";
 
+/** Token-endpoint client authentication. `none` is for protocols that use an
+ * out-of-band request signature while retaining a client secret as the HMAC
+ * key. */
+export const OAuthTokenClientAuthSchema = Schema.Literals(["body", "basic", "none"]);
+const OAuthTokenRequestSignaturePreflightSchema = Schema.Struct({
+  url: Schema.String,
+  params: Schema.Record(Schema.String, Schema.String),
+  timestampParam: Schema.optional(Schema.String),
+  signedParams: Schema.Array(Schema.String),
+  signatureParam: Schema.String,
+  responsePath: Schema.Array(Schema.String),
+  resultParam: Schema.String,
+});
+
+/** Declarative HMAC-SHA256 signing for non-standard OAuth token endpoints.
+ * The registered OAuth client secret is used only as the HMAC key and never
+ * enters integration config. */
+export const OAuthTokenRequestSignatureSchema = Schema.Struct({
+  algorithm: Schema.Literal("hmac-sha256"),
+  signedParams: Schema.Array(Schema.String),
+  signatureParam: Schema.String,
+  separator: Schema.optional(Schema.String),
+  preflight: Schema.optional(OAuthTokenRequestSignaturePreflightSchema),
+});
+
+export type OAuthTokenClientAuth = typeof OAuthTokenClientAuthSchema.Type;
+export type OAuthTokenRequestSignaturePreflight =
+  typeof OAuthTokenRequestSignaturePreflightSchema.Type;
+export type OAuthTokenRequestSignature = typeof OAuthTokenRequestSignatureSchema.Type;
+
 /** Provider OAuth config an integration declares as one of its auth templates —
  *  what to request. (The flow itself runs off the self-contained OAuthClient.)
  *  Keyed `kind: "oauth2"` like every auth method across the plugins. */
@@ -37,6 +67,22 @@ export interface OAuthAuthentication {
    *  resource, when discovered from protected-resource metadata. */
   readonly resource?: string | null;
   readonly scopes: readonly string[];
+  /** Scope delimiter for providers that do not use RFC 6749's space. */
+  readonly scopeSeparator?: string;
+  /** Omit the optional `scope` field from refresh requests when the provider
+   * only accepts the original grant implicitly. */
+  readonly omitScopeOnRefresh?: boolean;
+  /** Non-standard authorization request fields. Protocol fields still win. */
+  readonly authorizationParams?: Readonly<Record<string, string>>;
+  /** Non-standard token request form fields. Protocol and credential fields
+   *  are reserved and cannot be overridden. */
+  readonly tokenRequestParams?: Readonly<Record<string, string>>;
+  /** Object-key path selecting the RFC token object inside a JSON envelope. */
+  readonly tokenResponsePath?: readonly string[];
+  /** Override how the client authenticates at the token endpoint. */
+  readonly tokenClientAuth?: OAuthTokenClientAuth;
+  /** Optional declarative HMAC signing and one-time-value preflight. */
+  readonly tokenRequestSignature?: OAuthTokenRequestSignature;
   /** True when the authorization server supports OAuth Client ID Metadata
    *  Document (CIMD). The local OAuth client is then a public PKCE client whose
    *  `client_id` is this host's metadata-document URL, not a provider-side

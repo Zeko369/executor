@@ -8,6 +8,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect, Exit, Ref } from "effect";
 import { HttpServerResponse } from "effect/unstable/http";
+import { createHmac } from "node:crypto";
 
 import {
   OAUTH2_DEFAULT_TIMEOUT_MS,
@@ -87,6 +88,24 @@ const validCodeBody = {
 };
 
 const validRefreshBody = { access_token: "tok2", token_type: "Bearer", expires_in: 3600 };
+
+const signedTokenRequest = {
+  algorithm: "hmac-sha256" as const,
+  signedParams: ["action", "client_id", "nonce"],
+  signatureParam: "signature",
+  preflight: {
+    url: "https://oauth.example.com/signature",
+    params: { action: "getnonce" },
+    timestampParam: "timestamp",
+    signedParams: ["action", "client_id", "timestamp"],
+    signatureParam: "signature",
+    responsePath: ["body", "nonce"],
+    resultParam: "nonce",
+  },
+};
+
+const expectedHmac = (secret: string, values: readonly (string | null)[]): string =>
+  createHmac("sha256", secret).update(values.join(",")).digest("hex");
 
 const jwtPart = (value: unknown): string =>
   Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -202,6 +221,24 @@ describe("buildAuthorizationUrl", () => {
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
   });
 
+  it("does not let provider extras override OAuth protocol parameters", () => {
+    const url = new URL(
+      buildAuthorizationUrl({
+        ...baseInput,
+        extraParams: {
+          client_id: "attacker-client",
+          redirect_uri: "https://attacker.example/callback",
+          state: "attacker-state",
+          prompt: "consent",
+        },
+      }),
+    );
+    expect(url.searchParams.get("client_id")).toBe("client-123");
+    expect(url.searchParams.get("redirect_uri")).toBe("https://app.example.com/callback");
+    expect(url.searchParams.get("state")).toBe("state-abc");
+    expect(url.searchParams.get("prompt")).toBe("consent");
+  });
+
   it("preserves pre-existing query params on the authorization URL", () => {
     const url = new URL(
       buildAuthorizationUrl({
@@ -256,6 +293,99 @@ describe("buildAuthorizationUrl", () => {
 });
 
 describe("exchangeAuthorizationCode", () => {
+  it.effect("supports declarative HMAC preflight signing without sending the secret", () =>
+    Effect.gen(function* () {
+      const bodies: URLSearchParams[] = [];
+      const result = yield* exchangeAuthorizationCode({
+        tokenUrl: "https://oauth.example.com/token",
+        clientId: "cid",
+        clientSecret: "csecret",
+        clientAuth: "none",
+        redirectUrl: "https://app.example.com/cb",
+        codeVerifier: "verifier",
+        code: "abc",
+        tokenRequestParams: { action: "requesttoken" },
+        tokenResponsePath: ["body"],
+        tokenRequestSignature: signedTokenRequest,
+        fetch: async (input, init) => {
+          const request = input instanceof Request ? input : new Request(input, init);
+          const body = new URLSearchParams(await request.clone().text());
+          bodies.push(body);
+          if (new URL(request.url).pathname === "/signature") {
+            return new Response(JSON.stringify({ body: { nonce: "one-time" } }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            });
+          }
+          return new Response(JSON.stringify({ body: validCodeBody }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        },
+      });
+
+      expect(result.access_token).toBe("tok");
+      expect(bodies).toHaveLength(2);
+      const preflight = bodies[0]!;
+      expect(preflight.get("signature")).toBe(
+        expectedHmac("csecret", [
+          preflight.get("action"),
+          preflight.get("client_id"),
+          preflight.get("timestamp"),
+        ]),
+      );
+      const token = bodies[1]!;
+      expect(token.get("nonce")).toBe("one-time");
+      expect(token.get("client_secret")).toBeNull();
+      expect(token.get("signature")).toBe(
+        expectedHmac("csecret", [token.get("action"), token.get("client_id"), token.get("nonce")]),
+      );
+    }),
+  );
+
+  it.effect("supports configured token request fields and a nested response path", () =>
+    Effect.gen(function* () {
+      let requestBody: URLSearchParams | undefined;
+      const result = yield* exchangeAuthorizationCode({
+        tokenUrl: "https://oauth.example.com/token",
+        clientId: "cid",
+        clientSecret: "csecret",
+        redirectUrl: "https://app.example.com/cb",
+        codeVerifier: "verifier",
+        code: "abc",
+        tokenRequestParams: { action: "requesttoken", grant_type: "overridden" },
+        tokenResponsePath: ["body"],
+        fetch: async (input, init) => {
+          const request = input instanceof Request ? input : new Request(input, init);
+          requestBody = new URLSearchParams(await request.clone().text());
+          return new Response(
+            JSON.stringify({
+              status: 0,
+              body: {
+                access_token: "nested-access-token",
+                refresh_token: "nested-refresh-token",
+                expires_in: 10_800,
+                scope: "user.info,user.metrics",
+                token_type: "Bearer",
+              },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        },
+      });
+
+      expect(requestBody?.get("action")).toBe("requesttoken");
+      expect(requestBody?.get("grant_type")).toBe("authorization_code");
+      expect(result).toMatchObject({
+        access_token: "nested-access-token",
+        refresh_token: "nested-refresh-token",
+        expires_in: 10_800,
+        scope: "user.info,user.metrics",
+        token_type: "bearer",
+      });
+    }),
+  );
+
   it.effect("posts form-urlencoded body with grant_type=authorization_code and PKCE verifier", () =>
     withTokenEndpoint(tokenResponse(validCodeBody), ({ tokenUrl, calls }) =>
       Effect.gen(function* () {
@@ -623,6 +753,27 @@ describe("exchangeAuthorizationCode", () => {
     }),
   );
 
+  it.effect("normalizes scopes using a provider-declared response separator", () =>
+    Effect.gen(function* () {
+      const result = yield* exchangeAuthorizationCode({
+        tokenUrl: "https://oauth.example.com/token",
+        clientId: "cid",
+        clientSecret: "csecret",
+        redirectUrl: "https://app.example.com/cb",
+        codeVerifier: "verifier",
+        code: "abc",
+        scopeSeparator: ",",
+        fetch: tokenResponseFetch({
+          access_token: "provider-token",
+          token_type: "Bearer",
+          scope: "first.scope,second.scope",
+        }),
+      });
+
+      expect(result.scope).toBe("first.scope second.scope");
+    }),
+  );
+
   it.effect("keeps a standard top-level scope ahead of nested provider metadata", () =>
     withTokenEndpoint(
       tokenResponse({
@@ -904,6 +1055,96 @@ describe("exchangeClientCredentials", () => {
 });
 
 describe("refreshAccessToken", () => {
+  it.effect("repeats declarative HMAC preflight signing for refresh", () =>
+    Effect.gen(function* () {
+      const bodies: URLSearchParams[] = [];
+      const result = yield* refreshAccessToken({
+        tokenUrl: "https://oauth.example.com/token",
+        clientId: "cid",
+        clientSecret: "csecret",
+        clientAuth: "none",
+        refreshToken: "old-refresh-token",
+        tokenRequestParams: { action: "requesttoken" },
+        tokenResponsePath: ["body"],
+        tokenRequestSignature: signedTokenRequest,
+        fetch: async (input, init) => {
+          const request = input instanceof Request ? input : new Request(input, init);
+          const body = new URLSearchParams(await request.clone().text());
+          bodies.push(body);
+          if (new URL(request.url).pathname === "/signature") {
+            return new Response(JSON.stringify({ body: { nonce: "refresh-one-time" } }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            });
+          }
+          return new Response(
+            JSON.stringify({
+              body: {
+                ...validRefreshBody,
+                refresh_token: "rotated-refresh-token",
+              },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        },
+      });
+
+      expect(result).toMatchObject({
+        access_token: "tok2",
+        refresh_token: "rotated-refresh-token",
+      });
+      expect(bodies).toHaveLength(2);
+      const token = bodies[1]!;
+      expect(token.get("grant_type")).toBe("refresh_token");
+      expect(token.get("refresh_token")).toBe("old-refresh-token");
+      expect(token.get("nonce")).toBe("refresh-one-time");
+      expect(token.get("client_secret")).toBeNull();
+      expect(token.get("signature")).toBe(
+        expectedHmac("csecret", [token.get("action"), token.get("client_id"), token.get("nonce")]),
+      );
+    }),
+  );
+
+  it.effect("supports configured request fields and a nested rotated-token response", () =>
+    Effect.gen(function* () {
+      let requestBody: URLSearchParams | undefined;
+      const result = yield* refreshAccessToken({
+        tokenUrl: "https://oauth.example.com/token",
+        clientId: "cid",
+        clientSecret: "csecret",
+        refreshToken: "old-refresh-token",
+        tokenRequestParams: { action: "requesttoken", refresh_token: "overridden" },
+        tokenResponsePath: ["body"],
+        fetch: async (input, init) => {
+          const request = input instanceof Request ? input : new Request(input, init);
+          requestBody = new URLSearchParams(await request.clone().text());
+          return new Response(
+            JSON.stringify({
+              status: 0,
+              body: {
+                access_token: "refreshed-nested-access-token",
+                refresh_token: "rotated-nested-refresh-token",
+                expires_in: 10_800,
+                scope: "user.info,user.metrics",
+                token_type: "Bearer",
+              },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        },
+      });
+
+      expect(requestBody?.get("action")).toBe("requesttoken");
+      expect(requestBody?.get("grant_type")).toBe("refresh_token");
+      expect(requestBody?.get("refresh_token")).toBe("old-refresh-token");
+      expect(result).toMatchObject({
+        access_token: "refreshed-nested-access-token",
+        refresh_token: "rotated-nested-refresh-token",
+        expires_in: 10_800,
+      });
+    }),
+  );
+
   it.effect("normalizes Slack's comma-delimited scopes on refresh", () =>
     Effect.gen(function* () {
       const result = yield* refreshAccessToken({
@@ -919,6 +1160,25 @@ describe("refreshAccessToken", () => {
       });
 
       expect(result.scope).toBe("channels:read chat:write reactions:read");
+    }),
+  );
+
+  it.effect("normalizes refreshed scopes using a provider-declared separator", () =>
+    Effect.gen(function* () {
+      const result = yield* refreshAccessToken({
+        tokenUrl: "https://oauth.example.com/token",
+        clientId: "cid",
+        clientSecret: "csecret",
+        refreshToken: "refresh-token",
+        scopeSeparator: ",",
+        fetch: tokenResponseFetch({
+          access_token: "refreshed-token",
+          token_type: "Bearer",
+          scope: "first.scope,second.scope",
+        }),
+      });
+
+      expect(result.scope).toBe("first.scope second.scope");
     }),
   );
 

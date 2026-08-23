@@ -7,6 +7,8 @@ import {
   IntegrationAlreadyExistsError,
   IntegrationNotFoundError,
   IntegrationSlug,
+  OAuthTokenClientAuthSchema,
+  OAuthTokenRequestSignatureSchema,
 } from "@executor-js/sdk/shared";
 
 import {
@@ -66,6 +68,13 @@ const OAuthTemplatePayload = Schema.Struct({
   tokenUrl: Schema.String,
   resource: Schema.optional(Schema.NullOr(Schema.String)),
   scopes: Schema.Array(Schema.String),
+  scopeSeparator: Schema.optional(Schema.String),
+  omitScopeOnRefresh: Schema.optional(Schema.Boolean),
+  authorizationParams: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  tokenRequestParams: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  tokenResponsePath: Schema.optional(Schema.Array(Schema.String)),
+  tokenClientAuth: Schema.optional(OAuthTokenClientAuthSchema),
+  tokenRequestSignature: Schema.optional(OAuthTokenRequestSignatureSchema),
   supportsClientIdMetadataDocument: Schema.optional(Schema.Boolean),
 });
 
