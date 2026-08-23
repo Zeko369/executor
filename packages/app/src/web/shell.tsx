@@ -135,7 +135,7 @@ function IntegrationList(props: { pathname: string; onNavigate?: () => void }) {
               >
                 <IntegrationIconWithAccount
                   icon={integrationPresetIconUrl(
-                    { id: slug, kind: integration.kind },
+                    { id: slug, kind: integration.kind, iconUrl: integration.iconUrl },
                     integrationPlugins,
                   )}
                   integrationId={slug}

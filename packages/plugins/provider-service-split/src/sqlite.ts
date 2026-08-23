@@ -96,7 +96,7 @@ const readDatabaseInput = (
     const completedTenants = yield* readCompletedTenants(client);
     const integrations = yield* execute(
       client,
-      `SELECT tenant, slug, plugin_id, name, description, config, health_check,
+      `SELECT tenant, slug, plugin_id, name, description, icon_url, config, health_check,
         config_revised_at, can_remove, can_refresh, CAST(created_at AS TEXT) AS created_at,
         CAST(updated_at AS TEXT) AS updated_at, row_id
        FROM integration
@@ -176,6 +176,7 @@ const readDatabaseInput = (
           plugin_id: String(row.plugin_id),
           name: typeof row.name === "string" ? row.name : null,
           description: typeof row.description === "string" ? row.description : null,
+          icon_url: typeof row.icon_url === "string" ? row.icon_url : null,
           config: parseJsonLike(row.config),
           health_check: parseJsonLike(row.health_check),
           config_revised_at: row.config_revised_at as string | number | bigint | null,
@@ -317,15 +318,16 @@ const applyOrg = (
       const rowId = yield* stableId("integration", org.tenant, row.target.slug);
       yield* execute(client, {
         sql: `INSERT INTO integration
-          (slug, plugin_id, name, description, config, health_check, config_revised_at,
+          (slug, plugin_id, name, description, icon_url, config, health_check, config_revised_at,
            can_remove, can_refresh, created_at, updated_at, row_id, tenant)
-          VALUES (?, ?, ?, ?, ?, ?, NULL, 1, 1, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 1, 1, ?, ?, ?, ?)
           ON CONFLICT(tenant, slug) DO NOTHING`,
         args: [
           row.target.slug,
           row.target.pluginId,
           row.target.name,
           row.target.description,
+          row.target.iconUrl ?? null,
           JSON.stringify(scrubJson(row.config)),
           row.healthCheck ? JSON.stringify(scrubJson(row.healthCheck)) : null,
           now,

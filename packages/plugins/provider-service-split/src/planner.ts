@@ -52,6 +52,7 @@ export interface IntegrationRow {
   readonly plugin_id: string;
   readonly name: string | null;
   readonly description: string | null;
+  readonly icon_url?: string | null;
   readonly config: unknown;
   readonly health_check?: unknown;
   readonly config_revised_at?: string | number | bigint | null;
@@ -159,6 +160,7 @@ export interface ServiceTarget {
   readonly slug: string;
   readonly name: string;
   readonly description: string;
+  readonly iconUrl?: string;
   readonly specUrl?: string;
   readonly specFormat: "google-discovery" | "microsoft-graph";
   readonly authenticationTemplate?: readonly unknown[];
@@ -481,6 +483,7 @@ const serviceTargetForPreset = (
       slug: preset.defaultSlug ?? preset.id,
       name: preset.name,
       description: preset.summary,
+      ...(preset.icon ? { iconUrl: preset.icon } : {}),
       ...(preset.url ? { specUrl: preset.url } : {}),
       specFormat: "google-discovery",
       ...(preset.authTemplate ? { authenticationTemplate: preset.authTemplate } : {}),
@@ -496,6 +499,7 @@ const serviceTargetForPreset = (
     slug: preset.defaultSlug ?? preset.id,
     name: preset.name,
     description: preset.summary,
+    ...(preset.icon ? { iconUrl: preset.icon } : {}),
     ...(preset.url ? { specUrl: preset.url } : {}),
     specFormat: "microsoft-graph",
     ...(preset.authTemplate ? { authenticationTemplate: preset.authTemplate } : {}),

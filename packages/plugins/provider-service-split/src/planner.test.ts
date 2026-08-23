@@ -27,6 +27,7 @@ const integration = (overrides: Partial<IntegrationRow> = {}): IntegrationRow =>
   plugin_id: "google",
   name: "Google",
   description: "Google APIs",
+  icon_url: null,
   config: {
     googleDiscoveryUrls: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"],
     specHash: "mono-hash",

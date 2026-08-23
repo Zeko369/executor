@@ -17,6 +17,7 @@ export const integration = pgTable(
     plugin_id: text("plugin_id").notNull(),
     name: text("name"),
     description: text("description"),
+    icon_url: text("icon_url"),
     config: json("config"),
     health_check: json("health_check"),
     config_revised_at: bigint("config_revised_at", { mode: "bigint" }),

@@ -34,6 +34,7 @@ const toServerInput = (
       transport: "stdio";
       name: string;
       description?: string;
+      iconUrl?: string;
       command: string;
       args?: readonly string[];
       envVars?: readonly string[];
@@ -45,6 +46,7 @@ const toServerInput = (
       transport: "stdio",
       name: p.name,
       description: p.description,
+      iconUrl: p.iconUrl,
       command: p.command,
       args: p.args ? [...p.args] : undefined,
       envVars: p.envVars ? [...p.envVars] : undefined,
@@ -58,6 +60,7 @@ const toServerInput = (
     transport?: "remote";
     name: string;
     description?: string;
+    iconUrl?: string;
     endpoint: string;
     remoteTransport?: "streamable-http" | "sse" | "auto";
     queryParams?: Record<string, string>;
@@ -73,6 +76,7 @@ const toServerInput = (
     transport: "remote",
     name: p.name,
     description: p.description,
+    iconUrl: p.iconUrl,
     endpoint: p.endpoint,
     remoteTransport: p.remoteTransport,
     queryParams: p.queryParams,

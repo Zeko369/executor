@@ -49,14 +49,17 @@ export function CommandPalette(props: { open: boolean; onOpenChange: (open: bool
   const connectedIntegrations = useMemo(
     () =>
       AsyncResult.match(integrationsResult, {
-        onInitial: () => [] as Array<{ id: string; name: string; kind: string; url?: string }>,
-        onFailure: () => [] as Array<{ id: string; name: string; kind: string; url?: string }>,
+        onInitial: () =>
+          [] as Array<{ id: string; name: string; kind: string; url?: string; iconUrl?: string }>,
+        onFailure: () =>
+          [] as Array<{ id: string; name: string; kind: string; url?: string; iconUrl?: string }>,
         onSuccess: ({ value }) =>
           value.map((integration: Integration) => ({
             id: String(integration.slug),
             name: integration.name || String(integration.slug),
             kind: integration.kind,
             url: integration.displayUrl,
+            iconUrl: integration.iconUrl,
           })),
       }),
     [integrationsResult],
@@ -148,6 +151,7 @@ export function CommandPalette(props: { open: boolean; onOpenChange: (open: bool
                 readonly name: string;
                 readonly kind: string;
                 readonly url?: string;
+                readonly iconUrl?: string;
               }) => (
                 <CommandItem
                   key={`integration-${s.id}`}

@@ -2,6 +2,7 @@ import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 import { Schema } from "effect";
 import {
   IntegrationSlug,
+  IntegrationIconUrl,
   InternalError,
   IntegrationAlreadyExistsError,
 } from "@executor-js/sdk/shared";
@@ -33,6 +34,7 @@ const AddRemoteServerPayload = Schema.Struct({
   name: Schema.String,
   /** Agent-visible catalog description. Defaults to the display name. */
   description: Schema.optional(Schema.String),
+  iconUrl: Schema.optional(IntegrationIconUrl),
   endpoint: Schema.String,
   remoteTransport: Schema.optional(Schema.Literals(["streamable-http", "sse", "auto"])),
   slug: Schema.optional(Schema.String),
@@ -49,6 +51,7 @@ const AddStdioServerPayload = Schema.Struct({
   transport: Schema.Literal("stdio"),
   name: Schema.String,
   description: Schema.optional(Schema.String),
+  iconUrl: Schema.optional(IntegrationIconUrl),
   command: Schema.String,
   args: Schema.optional(Schema.Array(Schema.String)),
   /** Declare the secret env vars this server needs, by name. Their values are

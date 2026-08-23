@@ -332,6 +332,7 @@ const integrationMetaFor = (
     kind: integration?.kind ?? group.integration,
     name: integration?.name ?? fallbackName,
     url: integration?.displayUrl,
+    iconUrl: integration?.iconUrl,
   };
   return {
     name: integrationSummary.name,

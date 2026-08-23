@@ -407,6 +407,7 @@ export default function AddOpenApiIntegration(props: {
         spec: specInputForAdd(specUrl),
         slug: resolvedIntegrationId,
         name: resolvedDisplayName,
+        ...(previewPresetIcon ? { iconUrl: previewPresetIcon } : {}),
         ...(resolvedDescription.trim().length > 0
           ? { description: resolvedDescription.trim() }
           : {}),
@@ -438,6 +439,7 @@ export default function AddOpenApiIntegration(props: {
     doAdd,
     resolvedIntegrationId,
     resolvedDisplayName,
+    previewPresetIcon,
     resolvedDescription,
     resolvedBaseUrl,
     editedAuthenticationTemplate,

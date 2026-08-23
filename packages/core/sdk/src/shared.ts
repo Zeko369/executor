@@ -29,7 +29,13 @@ export {
 } from "./ids";
 export { connectionIdentifier, isConnectionIdentifier } from "./connection-name-identifier";
 
-// Domain projections (types only — no runtime cost).
+// Domain projections and browser-safe integration icon helpers.
+export {
+  INTEGRATION_ICON_URL_MAX_LENGTH,
+  IntegrationIconUrl,
+  integrationIconUrlFromUrl,
+  isIntegrationIconUrl,
+} from "./integration";
 export type {
   AuthMethodDescriptor,
   AuthMethodOAuthDescriptor,

@@ -171,7 +171,13 @@ const useIntegrationIcons = (): IconLookup => {
     return {
       icon: found
         ? integrationPresetIconUrl(
-            { id: slug, kind: found.kind, name, url: found.displayUrl },
+            {
+              id: slug,
+              kind: found.kind,
+              name,
+              url: found.displayUrl,
+              iconUrl: found.iconUrl,
+            },
             integrationPlugins,
           )
         : null,

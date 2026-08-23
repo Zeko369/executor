@@ -41,6 +41,7 @@ export const GraphqlHandlers = HttpApiBuilder.group(ExecutorApiWithGraphql, "gra
             slug: payload.slug,
             name: payload.name,
             description: payload.description,
+            iconUrl: payload.iconUrl,
             introspectionJson: payload.introspectionJson,
             headers: payload.headers,
             queryParams: payload.queryParams,

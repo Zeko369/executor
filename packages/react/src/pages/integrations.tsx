@@ -455,7 +455,13 @@ function IntegrationGrid(props: { integrations: readonly Integration[] }) {
         >
           <IntegrationIconWithAccount
             icon={integrationPresetIconUrl(
-              { id: slug, kind: integration.kind, name, url: integration.displayUrl },
+              {
+                id: slug,
+                kind: integration.kind,
+                name,
+                url: integration.displayUrl,
+                iconUrl: integration.iconUrl,
+              },
               integrationPlugins,
             )}
             integrationId={slug}

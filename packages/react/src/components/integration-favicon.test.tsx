@@ -92,6 +92,36 @@ describe("IntegrationFavicon", () => {
     ).toBe("https://example.com/sheets.svg");
   });
 
+  it("prefers the catalog's editable icon over a matching preset", () => {
+    expect(
+      integrationPresetIconUrl(
+        {
+          id: "strava",
+          kind: "openapi",
+          name: "Strava",
+          url: "https://www.strava.com/api/v3",
+          iconUrl: "https://cdn.example.com/custom-strava.png",
+        },
+        [
+          {
+            key: "openapi",
+            label: "OpenAPI",
+            add: () => null,
+            presets: [
+              {
+                id: "strava",
+                name: "Strava",
+                summary: "Activities.",
+                url: "https://www.strava.com/api/v3",
+                icon: "https://example.com/preset-strava.png",
+              },
+            ],
+          },
+        ],
+      ),
+    ).toBe("https://cdn.example.com/custom-strava.png");
+  });
+
   it("does not fuzzy-match preset icons from names or slugs", () => {
     // Name/slug token matching is gone: without an exact defaultSlug or URL
     // match, the preset matcher declines and the cascade resolves through the
