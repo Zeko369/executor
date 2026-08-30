@@ -1,0 +1,128 @@
+name: Personal self-host image
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: personal-selfhost-main
+  cancel-in-progress: true
+
+env:
+  DO_NOT_TRACK: "1"
+  EXECUTOR_DISABLE_ANALYTICS: "1"
+  EXECUTOR_DISABLE_INTEGRATIONS_FETCH: "1"
+  IMAGE_NAME: ghcr.io/zeko369/executor-selfhost
+
+jobs:
+  verify:
+    name: Verify fork
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test fork-specific policy and OAuth paths
+        working-directory: packages/core/sdk
+        run: >-
+          bun run test --
+          src/policies.test.ts
+          src/oauth-flow.test.ts
+          src/oauth-helpers.test.ts
+
+  build:
+    name: Build, smoke-test, and promote
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push commit image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/host-selfhost/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke-test published digest
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          image="${IMAGE_NAME}@${IMAGE_DIGEST}"
+          container="executor-personal-smoke"
+          cleanup() {
+            docker logs "$container" > /tmp/executor-smoke.log 2>&1 || true
+            docker rm -f "$container" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run -d --name "$container" -p 127.0.0.1:4788:4788 -e BETTER_AUTH_SECRET=personal-smoke-only-not-a-production-secret -e EXECUTOR_BOOTSTRAP_ADMIN_EMAIL=smoke@example.invalid -e EXECUTOR_BOOTSTRAP_ADMIN_PASSWORD=executor-personal-smoke-password -e EXECUTOR_WEB_BASE_URL=http://127.0.0.1:4788 "$image"
+
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:4788/api/health | grep -q '"status":"ok"'; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker logs "$container"
+          exit 1
+
+      - name: Promote digest to personal channel
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: docker buildx imagetools create --tag "${IMAGE_NAME}:personal" "${IMAGE_NAME}@${IMAGE_DIGEST}"
+
+      - name: Record promoted image
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo "### Personal Executor image"
+            echo
+            echo "\`${IMAGE_NAME}@${IMAGE_DIGEST}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
