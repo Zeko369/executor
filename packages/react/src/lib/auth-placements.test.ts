@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import type { AuthMethodDescriptor } from "@executor-js/sdk/shared";
 
-import { authMethodsFromDescriptors } from "./auth-placements";
+import { authMethodsFromDescriptors, placementFromHeaderPattern } from "./auth-placements";
 
 describe("authMethodsFromDescriptors", () => {
   it("maps an oauth descriptor and carries discoveryUrl + supportsDynamicRegistration", () => {
@@ -39,25 +39,6 @@ describe("authMethodsFromDescriptors", () => {
           tokenUrl: "https://oauth2.googleapis.com/token",
           resource: "https://api.example",
           scopes: ["read", "write"],
-          scopeSeparator: ",",
-          authorizationParams: { audience: "health" },
-          tokenRequestParams: { action: "requesttoken" },
-          tokenResponsePath: ["body"],
-          tokenClientAuth: "none",
-          tokenRequestSignature: {
-            algorithm: "hmac-sha256",
-            signedParams: ["action", "client_id", "nonce"],
-            signatureParam: "signature",
-            preflight: {
-              url: "https://auth.example/signature",
-              params: { action: "getnonce" },
-              timestampParam: "timestamp",
-              signedParams: ["action", "client_id", "timestamp"],
-              signatureParam: "signature",
-              responsePath: ["body", "nonce"],
-              resultParam: "nonce",
-            },
-          },
           registrationEndpoint: "https://accounts.google.com/register",
           supportsClientIdMetadataDocument: true,
         },
@@ -70,15 +51,6 @@ describe("authMethodsFromDescriptors", () => {
     expect(methods[0]?.oauth?.tokenUrl).toBe("https://oauth2.googleapis.com/token");
     expect(methods[0]?.oauth?.resource).toBe("https://api.example");
     expect(methods[0]?.oauth?.scopes).toEqual(["read", "write"]);
-    expect(methods[0]?.oauth?.scopeSeparator).toBe(",");
-    expect(methods[0]?.oauth?.authorizationParams).toEqual({ audience: "health" });
-    expect(methods[0]?.oauth?.tokenRequestParams).toEqual({ action: "requesttoken" });
-    expect(methods[0]?.oauth?.tokenResponsePath).toEqual(["body"]);
-    expect(methods[0]?.oauth?.tokenClientAuth).toBe("none");
-    expect(methods[0]?.oauth?.tokenRequestSignature).toMatchObject({
-      algorithm: "hmac-sha256",
-      signatureParam: "signature",
-    });
     expect(methods[0]?.oauth?.registrationEndpoint).toBe("https://accounts.google.com/register");
     expect(methods[0]?.oauth?.supportsClientIdMetadataDocument).toBe(true);
   });
@@ -127,5 +99,27 @@ describe("authMethodsFromDescriptors", () => {
 
   it("returns an empty array for no descriptors", () => {
     expect(authMethodsFromDescriptors([])).toEqual([]);
+  });
+});
+
+describe("placementFromHeaderPattern", () => {
+  it("keeps a Bearer prefix, space included", () => {
+    expect(placementFromHeaderPattern("Authorization: Bearer {token}")).toEqual({
+      carrier: "header",
+      name: "Authorization",
+      prefix: "Bearer ",
+    });
+  });
+
+  it("an empty prefix is meaningful: Linear's keys take no Bearer", () => {
+    expect(placementFromHeaderPattern("Authorization: {api_key}")).toEqual({
+      carrier: "header",
+      name: "Authorization",
+      prefix: "",
+    });
+  });
+
+  it("rejects text that is not a header pattern", () => {
+    expect(placementFromHeaderPattern("just some prose")).toBeNull();
   });
 });

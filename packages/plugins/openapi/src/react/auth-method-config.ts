@@ -31,7 +31,7 @@ const oauthAuthMethod = (template: Extract<Authentication, { kind: "oauth2" }>):
   const slug = String(template.slug);
   return {
     id: slug,
-    label: "OAuth2",
+    label: template.label ?? "OAuth2",
     kind: "oauth",
     source: slug.startsWith("custom_") ? "custom" : "spec",
     template: AuthTemplateSlug.make(slug),
@@ -43,15 +43,6 @@ const oauthAuthMethod = (template: Extract<Authentication, { kind: "oauth2" }>):
       tokenUrl: template.tokenUrl,
       resource: template.resource ?? null,
       scopes: template.scopes,
-      scopeSeparator: template.scopeSeparator,
-      ...(template.omitScopeOnRefresh !== undefined
-        ? { omitScopeOnRefresh: template.omitScopeOnRefresh }
-        : {}),
-      authorizationParams: template.authorizationParams,
-      tokenRequestParams: template.tokenRequestParams,
-      tokenResponsePath: template.tokenResponsePath,
-      tokenClientAuth: template.tokenClientAuth,
-      tokenRequestSignature: template.tokenRequestSignature,
       supportsClientIdMetadataDocument: template.supportsClientIdMetadataDocument,
     },
   };
@@ -87,19 +78,11 @@ export function editorValueFromAuthentication(template: Authentication): AuthTem
   if (template.kind === "oauth2") {
     return {
       kind: "oauth",
+      ...(template.label !== undefined ? { label: template.label } : {}),
       authorizationUrl: template.authorizationUrl ?? "",
       tokenUrl: template.tokenUrl ?? "",
       resource: template.resource ?? null,
       scopes: template.scopes ?? [],
-      scopeSeparator: template.scopeSeparator,
-      ...(template.omitScopeOnRefresh !== undefined
-        ? { omitScopeOnRefresh: template.omitScopeOnRefresh }
-        : {}),
-      authorizationParams: template.authorizationParams,
-      tokenRequestParams: template.tokenRequestParams,
-      tokenResponsePath: template.tokenResponsePath,
-      tokenClientAuth: template.tokenClientAuth,
-      tokenRequestSignature: template.tokenRequestSignature,
       supportsClientIdMetadataDocument: template.supportsClientIdMetadataDocument,
     };
   }
@@ -113,27 +96,11 @@ const oauthTemplateFromEditorValue = (
 ): Authentication => ({
   slug: AuthTemplateSlug.make(slug ?? ""),
   kind: "oauth2",
+  ...(value.label !== undefined ? { label: value.label } : {}),
   authorizationUrl: value.authorizationUrl,
   tokenUrl: value.tokenUrl,
   resource: value.resource ?? null,
   scopes: [...value.scopes],
-  ...(value.scopeSeparator !== undefined ? { scopeSeparator: value.scopeSeparator } : {}),
-  ...(value.omitScopeOnRefresh !== undefined
-    ? { omitScopeOnRefresh: value.omitScopeOnRefresh }
-    : {}),
-  ...(value.authorizationParams !== undefined
-    ? { authorizationParams: value.authorizationParams }
-    : {}),
-  ...(value.tokenRequestParams !== undefined
-    ? { tokenRequestParams: value.tokenRequestParams }
-    : {}),
-  ...(value.tokenResponsePath !== undefined
-    ? { tokenResponsePath: [...value.tokenResponsePath] }
-    : {}),
-  ...(value.tokenClientAuth !== undefined ? { tokenClientAuth: value.tokenClientAuth } : {}),
-  ...(value.tokenRequestSignature !== undefined
-    ? { tokenRequestSignature: value.tokenRequestSignature }
-    : {}),
   ...(value.supportsClientIdMetadataDocument === true
     ? { supportsClientIdMetadataDocument: true }
     : {}),

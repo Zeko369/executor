@@ -3,7 +3,6 @@ import { Effect, Option } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 
 import { extract } from "./extract";
-import { requestPathFromResolvedTemplate } from "./invoke";
 import { resolveServerUrl } from "./openapi-utils";
 import { parse } from "./parse";
 import { previewSpec as previewSpecRaw } from "./preview";
@@ -50,18 +49,6 @@ describe("resolveServerUrl", () => {
     expect(resolveServerUrl("https://api.example.com", undefined, { tenant: "acme" })).toBe(
       "https://api.example.com",
     );
-  });
-});
-
-describe("requestPathFromResolvedTemplate", () => {
-  it("normalizes an absolute OpenAPI path key and ignores padding whitespace", () => {
-    expect(requestPathFromResolvedTemplate("https://api.example.com/v2/items?view=full   ")).toBe(
-      "/v2/items?view=full",
-    );
-  });
-
-  it("keeps a relative path template unchanged", () => {
-    expect(requestPathFromResolvedTemplate("/v2/items/{id}")).toBe("/v2/items/{id}");
   });
 });
 

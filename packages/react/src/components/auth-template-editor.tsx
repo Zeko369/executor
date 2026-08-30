@@ -1,5 +1,4 @@
 import { type Placement } from "../lib/auth-placements";
-import type { OAuthTokenClientAuth, OAuthTokenRequestSignature } from "@executor-js/sdk/shared";
 import { Button } from "./button";
 import { FilterTabs } from "./filter-tabs";
 import { Input } from "./input";
@@ -32,17 +31,13 @@ export type AuthTemplateEditorValue =
   | { readonly kind: "apikey"; readonly placements: readonly Placement[] }
   | {
       readonly kind: "oauth";
+      /** Display label of the stored method, carried through untouched so an
+       *  editor round-trip doesn't strip it. Not edited here. */
+      readonly label?: string;
       readonly authorizationUrl: string;
       readonly tokenUrl: string;
       readonly resource?: string | null;
       readonly scopes: readonly string[];
-      readonly scopeSeparator?: string;
-      readonly omitScopeOnRefresh?: boolean;
-      readonly authorizationParams?: Readonly<Record<string, string>>;
-      readonly tokenRequestParams?: Readonly<Record<string, string>>;
-      readonly tokenResponsePath?: readonly string[];
-      readonly tokenClientAuth?: OAuthTokenClientAuth;
-      readonly tokenRequestSignature?: OAuthTokenRequestSignature;
       readonly supportsClientIdMetadataDocument?: boolean;
     };
 

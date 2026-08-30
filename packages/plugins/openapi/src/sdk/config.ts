@@ -5,10 +5,6 @@ import {
   renderAuthPlacements,
   requiredPlacementVariables,
 } from "@executor-js/sdk/http-auth";
-import {
-  OAuthTokenClientAuthSchema,
-  OAuthTokenRequestSignatureSchema,
-} from "@executor-js/sdk/shared";
 
 import type { Authentication } from "./types";
 import { SpecOverridesSchema, type SpecOverrides } from "./spec-overrides";
@@ -36,17 +32,11 @@ import { SpecOverridesSchema, type SpecOverrides } from "./spec-overrides";
 const OAuthAuthenticationSchema = Schema.Struct({
   slug: Schema.String,
   kind: Schema.Literal("oauth2"),
+  label: Schema.optional(Schema.String),
   authorizationUrl: Schema.String,
   tokenUrl: Schema.String,
   resource: Schema.optional(Schema.NullOr(Schema.String)),
   scopes: Schema.Array(Schema.String),
-  scopeSeparator: Schema.optional(Schema.String),
-  omitScopeOnRefresh: Schema.optional(Schema.Boolean),
-  authorizationParams: Schema.optional(Schema.Record(Schema.String, Schema.String)),
-  tokenRequestParams: Schema.optional(Schema.Record(Schema.String, Schema.String)),
-  tokenResponsePath: Schema.optional(Schema.Array(Schema.String)),
-  tokenClientAuth: Schema.optional(OAuthTokenClientAuthSchema),
-  tokenRequestSignature: Schema.optional(OAuthTokenRequestSignatureSchema),
   supportsClientIdMetadataDocument: Schema.optional(Schema.Boolean),
 });
 
@@ -62,6 +52,11 @@ export const OpenApiIntegrationConfigSchema = Schema.Struct({
   specUrl: Schema.optional(Schema.String),
   /** Optional base URL override. */
   baseUrl: Schema.optional(Schema.String),
+  /** The PRODUCT's domain, recorded at add time when the caller knew it (a
+   *  registry row names notion.com). The spec's own host is often a code
+   *  host (raw.githubusercontent.com) that says nothing about the product,
+   *  which sent credential guidance and favicons to the wrong domain. */
+  displayDomain: Schema.optional(Schema.String),
   /** Static headers applied to every request (no secret material). */
   headers: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   /** Static query params applied to every request (no secret material). */

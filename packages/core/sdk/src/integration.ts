@@ -1,5 +1,5 @@
 import type { IntegrationSlug } from "./ids";
-import type { OAuthTokenClientAuth, OAuthTokenRequestSignature } from "./oauth-client";
+import type { EnterpriseIdentityProviderDescriptor } from "./oauth-client";
 
 /* Core knows only an integration's catalog identity — slug + description + which
  * plugin (`kind`) owns it. The type-specific shape (openapi auth templates + spec,
@@ -57,13 +57,6 @@ export interface AuthMethodOAuthDescriptor {
   readonly tokenUrl?: string;
   readonly resource?: string | null;
   readonly scopes?: readonly string[];
-  readonly scopeSeparator?: string;
-  readonly omitScopeOnRefresh?: boolean;
-  readonly authorizationParams?: Readonly<Record<string, string>>;
-  readonly tokenRequestParams?: Readonly<Record<string, string>>;
-  readonly tokenResponsePath?: readonly string[];
-  readonly tokenClientAuth?: OAuthTokenClientAuth;
-  readonly tokenRequestSignature?: OAuthTokenRequestSignature;
   readonly registrationEndpoint?: string;
   /** True when the integration is known to support RFC 7591 dynamic client
    *  registration (drives the transparent auto-register connect flow). */
@@ -72,6 +65,13 @@ export interface AuthMethodOAuthDescriptor {
    *  clients. The UI can create a local public OAuth client using this host's
    *  metadata-document URL as `client_id`, with no provider app registration. */
   readonly supportsClientIdMetadataDocument?: boolean;
+  /** The enterprise identity provider this integration is configured to obtain
+   *  identity assertions from (MCP Enterprise-Managed Authorization). Present
+   *  only when the deployment has declared one for this integration; the
+   *  connect path still verifies at discovery time that the server advertises
+   *  the ID-JAG grant profile, and falls back to the interactive flow when it
+   *  does not. */
+  readonly enterpriseIdentityProvider?: EnterpriseIdentityProviderDescriptor;
 }
 
 /** A single declared auth method on an integration's catalog response. */

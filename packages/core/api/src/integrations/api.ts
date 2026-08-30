@@ -11,6 +11,7 @@
 import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 import { Schema } from "effect";
 import {
+  EnterpriseIdentityProviderDescriptorSchema,
   HealthCheckCandidate,
   HealthCheckSpec,
   IntegrationDetectionResult,
@@ -18,8 +19,6 @@ import {
   IntegrationRemovalNotAllowedError,
   IntegrationSlug,
   InternalError,
-  OAuthTokenClientAuthSchema,
-  OAuthTokenRequestSignatureSchema,
 } from "@executor-js/sdk/shared";
 
 // ---------------------------------------------------------------------------
@@ -53,16 +52,14 @@ const OAuthDescriptor = Schema.Struct({
   tokenUrl: Schema.optional(Schema.String),
   resource: Schema.optional(Schema.NullOr(Schema.String)),
   scopes: Schema.optional(Schema.Array(Schema.String)),
-  scopeSeparator: Schema.optional(Schema.String),
-  omitScopeOnRefresh: Schema.optional(Schema.Boolean),
-  authorizationParams: Schema.optional(Schema.Record(Schema.String, Schema.String)),
-  tokenRequestParams: Schema.optional(Schema.Record(Schema.String, Schema.String)),
-  tokenResponsePath: Schema.optional(Schema.Array(Schema.String)),
-  tokenClientAuth: Schema.optional(OAuthTokenClientAuthSchema),
-  tokenRequestSignature: Schema.optional(OAuthTokenRequestSignatureSchema),
   registrationEndpoint: Schema.optional(Schema.String),
   supportsDynamicRegistration: Schema.optional(Schema.Boolean),
   supportsClientIdMetadataDocument: Schema.optional(Schema.Boolean),
+  /** MCP Enterprise-Managed Authorization: the registered OAuth app that mints
+   *  this integration's identity assertions. Present only when the deployment
+   *  declared one — the client names it on `oauth.start` alongside the
+   *  assertion it holds. The interactive flow stays available regardless. */
+  enterpriseIdentityProvider: Schema.optional(EnterpriseIdentityProviderDescriptorSchema),
 });
 
 /** A single declared auth method — mirrors the SDK's `AuthMethodDescriptor`. */

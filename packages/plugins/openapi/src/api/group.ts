@@ -7,8 +7,6 @@ import {
   IntegrationAlreadyExistsError,
   IntegrationNotFoundError,
   IntegrationSlug,
-  OAuthTokenClientAuthSchema,
-  OAuthTokenRequestSignatureSchema,
 } from "@executor-js/sdk/shared";
 
 import {
@@ -64,17 +62,11 @@ const OpenApiSpecInputPayload = Schema.Union([
 const OAuthTemplatePayload = Schema.Struct({
   slug: Schema.String,
   kind: Schema.Literal("oauth2"),
+  label: Schema.optional(Schema.String),
   authorizationUrl: Schema.String,
   tokenUrl: Schema.String,
   resource: Schema.optional(Schema.NullOr(Schema.String)),
   scopes: Schema.Array(Schema.String),
-  scopeSeparator: Schema.optional(Schema.String),
-  omitScopeOnRefresh: Schema.optional(Schema.Boolean),
-  authorizationParams: Schema.optional(Schema.Record(Schema.String, Schema.String)),
-  tokenRequestParams: Schema.optional(Schema.Record(Schema.String, Schema.String)),
-  tokenResponsePath: Schema.optional(Schema.Array(Schema.String)),
-  tokenClientAuth: Schema.optional(OAuthTokenClientAuthSchema),
-  tokenRequestSignature: Schema.optional(OAuthTokenRequestSignatureSchema),
   supportsClientIdMetadataDocument: Schema.optional(Schema.Boolean),
 });
 
@@ -90,6 +82,9 @@ const AddSpecPayload = Schema.Struct({
   name: Schema.optional(Schema.String),
   description: Schema.optional(Schema.String),
   baseUrl: Schema.optional(Schema.String),
+  /** The product's domain when the caller knew it (a registry row names
+   *  notion.com) — display identity when the spec lives on a code host. */
+  displayDomain: Schema.optional(Schema.String),
   headers: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   queryParams: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   specFormat: Schema.optional(Schema.String),

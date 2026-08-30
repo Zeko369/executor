@@ -19,26 +19,6 @@ describe("authMethodsFromConfig", () => {
         tokenUrl: "https://x.example/token",
         resource: "https://api.example",
         scopes: ["read"],
-        scopeSeparator: ",",
-        omitScopeOnRefresh: true,
-        authorizationParams: { audience: "health" },
-        tokenRequestParams: { action: "requesttoken" },
-        tokenResponsePath: ["body"],
-        tokenClientAuth: "none",
-        tokenRequestSignature: {
-          algorithm: "hmac-sha256",
-          signedParams: ["action", "client_id", "nonce"],
-          signatureParam: "signature",
-          preflight: {
-            url: "https://auth.example/signature",
-            params: { action: "getnonce" },
-            timestampParam: "timestamp",
-            signedParams: ["action", "client_id", "timestamp"],
-            signatureParam: "signature",
-            responsePath: ["body", "nonce"],
-            resultParam: "nonce",
-          },
-        },
         supportsClientIdMetadataDocument: true,
       },
     ]);
@@ -51,26 +31,6 @@ describe("authMethodsFromConfig", () => {
         tokenUrl: "https://x.example/token",
         resource: "https://api.example",
         scopes: ["read"],
-        scopeSeparator: ",",
-        omitScopeOnRefresh: true,
-        authorizationParams: { audience: "health" },
-        tokenRequestParams: { action: "requesttoken" },
-        tokenResponsePath: ["body"],
-        tokenClientAuth: "none",
-        tokenRequestSignature: {
-          algorithm: "hmac-sha256",
-          signedParams: ["action", "client_id", "nonce"],
-          signatureParam: "signature",
-          preflight: {
-            url: "https://auth.example/signature",
-            params: { action: "getnonce" },
-            timestampParam: "timestamp",
-            signedParams: ["action", "client_id", "timestamp"],
-            signatureParam: "signature",
-            responsePath: ["body", "nonce"],
-            resultParam: "nonce",
-          },
-        },
         supportsClientIdMetadataDocument: true,
       },
     });
@@ -119,26 +79,6 @@ describe("editor round-trip", () => {
         tokenUrl: "https://x.example/token",
         resource: "https://api.example",
         scopes: ["a", "b"],
-        scopeSeparator: ",",
-        omitScopeOnRefresh: true,
-        authorizationParams: { audience: "health" },
-        tokenRequestParams: { action: "requesttoken" },
-        tokenResponsePath: ["body"],
-        tokenClientAuth: "none",
-        tokenRequestSignature: {
-          algorithm: "hmac-sha256",
-          signedParams: ["action", "client_id", "nonce"],
-          signatureParam: "signature",
-          preflight: {
-            url: "https://auth.example/signature",
-            params: { action: "getnonce" },
-            timestampParam: "timestamp",
-            signedParams: ["action", "client_id", "timestamp"],
-            signatureParam: "signature",
-            responsePath: ["body", "nonce"],
-            resultParam: "nonce",
-          },
-        },
         supportsClientIdMetadataDocument: true,
       }),
     ).toEqual({
@@ -147,28 +87,24 @@ describe("editor round-trip", () => {
       tokenUrl: "https://x.example/token",
       resource: "https://api.example",
       scopes: ["a", "b"],
-      scopeSeparator: ",",
-      omitScopeOnRefresh: true,
-      authorizationParams: { audience: "health" },
-      tokenRequestParams: { action: "requesttoken" },
-      tokenResponsePath: ["body"],
-      tokenClientAuth: "none",
-      tokenRequestSignature: {
-        algorithm: "hmac-sha256",
-        signedParams: ["action", "client_id", "nonce"],
-        signatureParam: "signature",
-        preflight: {
-          url: "https://auth.example/signature",
-          params: { action: "getnonce" },
-          timestampParam: "timestamp",
-          signedParams: ["action", "client_id", "timestamp"],
-          signatureParam: "signature",
-          responsePath: ["body", "nonce"],
-          resultParam: "nonce",
-        },
-      },
       supportsClientIdMetadataDocument: true,
     });
+  });
+
+  it("oauth stored → editor → stored preserves the display label", () => {
+    const stored: Authentication = {
+      slug: AuthTemplateSlug.make("azureAdDelegated"),
+      kind: "oauth2",
+      label: "OAuth2 (user)",
+      authorizationUrl: "https://x.example/auth",
+      tokenUrl: "https://x.example/token",
+      resource: null,
+      scopes: ["a"],
+    };
+    const editor = editorValueFromAuthentication(stored);
+    const back = authenticationFromEditorValue(editor, "azureAdDelegated");
+    expect(back).toEqual(stored);
+    expect(authMethodsFromConfig([stored])[0]?.label).toBe("OAuth2 (user)");
   });
 
   it("none editor value yields no method", () => {

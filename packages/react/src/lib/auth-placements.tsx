@@ -16,11 +16,7 @@
 // ---------------------------------------------------------------------------
 
 import { AuthTemplateSlug } from "@executor-js/sdk/shared";
-import type {
-  AuthMethodDescriptor,
-  OAuthTokenClientAuth,
-  OAuthTokenRequestSignature,
-} from "@executor-js/sdk/shared";
+import type { AuthMethodDescriptor } from "@executor-js/sdk/shared";
 
 export type Carrier = "header" | "query" | "env";
 
@@ -44,6 +40,22 @@ export interface Placement {
 /** A fresh, empty header placement — the default first row in an editor. */
 export const emptyPlacement = (): Placement => ({ carrier: "header", name: "", prefix: "" });
 
+/** Parses a registry header pattern — `"Authorization: Bearer {token}"` — into
+ *  a placement. The literal text between the colon and the `{variable}` is the
+ *  prefix, and its ABSENCE is load-bearing: `"Authorization: {api_key}"` is how
+ *  the registry says Linear's personal keys take no Bearer prefix. */
+export function placementFromHeaderPattern(pattern: string): Placement | null {
+  const match = /^([A-Za-z0-9-]+):\s*(.*)$/.exec(pattern.trim());
+  if (!match) return null;
+  const rest = match[2] ?? "";
+  const brace = rest.indexOf("{");
+  return {
+    carrier: "header",
+    name: match[1] ?? "",
+    prefix: brace >= 0 ? rest.slice(0, brace) : "",
+  };
+}
+
 /** What an auth method is, presentationally. `kind` drives the credential UI:
  *  `oauth` shows a Connect button, `none` creates a connection with no
  *  credential inputs, and apikey/custom fill secrets across `placements`.
@@ -60,13 +72,6 @@ export interface AuthMethodOAuth {
   readonly tokenUrl?: string;
   readonly resource?: string | null;
   readonly scopes?: readonly string[];
-  readonly scopeSeparator?: string;
-  readonly omitScopeOnRefresh?: boolean;
-  readonly authorizationParams?: Readonly<Record<string, string>>;
-  readonly tokenRequestParams?: Readonly<Record<string, string>>;
-  readonly tokenResponsePath?: readonly string[];
-  readonly tokenClientAuth?: OAuthTokenClientAuth;
-  readonly tokenRequestSignature?: OAuthTokenRequestSignature;
   /** RFC 7591 registration endpoint, when the provider advertises Dynamic
    *  Client Registration. Lets the form offer a one-click "Register
    *  automatically" path that needs no pasted client id/secret. */
@@ -184,15 +189,6 @@ function authMethodFromDescriptor(descriptor: AuthMethodDescriptor): AuthMethod 
         tokenUrl: oauth?.tokenUrl,
         resource: oauth?.resource ?? null,
         scopes: oauth?.scopes,
-        scopeSeparator: oauth?.scopeSeparator,
-        ...(oauth?.omitScopeOnRefresh !== undefined
-          ? { omitScopeOnRefresh: oauth.omitScopeOnRefresh }
-          : {}),
-        authorizationParams: oauth?.authorizationParams,
-        tokenRequestParams: oauth?.tokenRequestParams,
-        tokenResponsePath: oauth?.tokenResponsePath,
-        tokenClientAuth: oauth?.tokenClientAuth,
-        tokenRequestSignature: oauth?.tokenRequestSignature,
         registrationEndpoint: oauth?.registrationEndpoint,
         discoveryUrl: oauth?.discoveryUrl,
         supportsDynamicRegistration: oauth?.supportsDynamicRegistration,

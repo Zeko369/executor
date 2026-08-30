@@ -62,26 +62,6 @@ describe("describeOpenApiAuthMethods", () => {
           tokenUrl: "https://auth.example/token",
           resource: "https://api.example",
           scopes: ["read", "write"],
-          scopeSeparator: ",",
-          omitScopeOnRefresh: true,
-          authorizationParams: { audience: "health" },
-          tokenRequestParams: { action: "requesttoken" },
-          tokenResponsePath: ["body"],
-          tokenClientAuth: "none",
-          tokenRequestSignature: {
-            algorithm: "hmac-sha256",
-            signedParams: ["action", "client_id", "nonce"],
-            signatureParam: "signature",
-            preflight: {
-              url: "https://auth.example/signature",
-              params: { action: "getnonce" },
-              timestampParam: "timestamp",
-              signedParams: ["action", "client_id", "timestamp"],
-              signatureParam: "signature",
-              responsePath: ["body", "nonce"],
-              resultParam: "nonce",
-            },
-          },
           supportsClientIdMetadataDocument: true,
         },
       ]),
@@ -98,30 +78,27 @@ describe("describeOpenApiAuthMethods", () => {
           tokenUrl: "https://auth.example/token",
           resource: "https://api.example",
           scopes: ["read", "write"],
-          scopeSeparator: ",",
-          omitScopeOnRefresh: true,
-          authorizationParams: { audience: "health" },
-          tokenRequestParams: { action: "requesttoken" },
-          tokenResponsePath: ["body"],
-          tokenClientAuth: "none",
-          tokenRequestSignature: {
-            algorithm: "hmac-sha256",
-            signedParams: ["action", "client_id", "nonce"],
-            signatureParam: "signature",
-            preflight: {
-              url: "https://auth.example/signature",
-              params: { action: "getnonce" },
-              timestampParam: "timestamp",
-              signedParams: ["action", "client_id", "timestamp"],
-              signatureParam: "signature",
-              responsePath: ["body", "nonce"],
-              resultParam: "nonce",
-            },
-          },
           supportsClientIdMetadataDocument: true,
         },
       },
     ]);
+  });
+
+  it("prefers a stored oauth label over the generic OAuth2 fallback", () => {
+    const methods = describeOpenApiAuthMethods(
+      recordWith([
+        {
+          slug: AuthTemplateSlug.make("azureAdDelegated"),
+          kind: "oauth2",
+          label: "OAuth2 (user)",
+          authorizationUrl: "https://auth.example/authorize",
+          tokenUrl: "https://auth.example/token",
+          scopes: ["read"],
+        },
+      ]),
+    );
+
+    expect(methods.map((method) => method.label)).toEqual(["OAuth2 (user)"]);
   });
 
   it("returns [] when no auth template is declared and for a foreign config", () => {
