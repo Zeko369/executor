@@ -113,6 +113,16 @@ export const OAUTH2_REFRESH_SKEW_MS = 60_000;
 /** Default token-endpoint timeout. */
 export const OAUTH2_DEFAULT_TIMEOUT_MS = 20_000;
 
+/** HubSpot scopes that the registered app may grant but must receive through
+ *  HubSpot's non-standard `optional_scope` authorize parameter. Keeping these
+ *  out of the RFC `scope` parameter lets accounts without the corresponding
+ *  product features complete consent while still granting them when present. */
+export const HUBSPOT_OPTIONAL_SCOPES = [
+  "content",
+  "crm.objects.custom.read",
+  "crm.schemas.custom.read",
+] as const;
+
 /** RFC 8693 §2.1 token-exchange grant. */
 export const TOKEN_EXCHANGE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange";
 
@@ -247,7 +257,12 @@ export const buildAuthorizationUrl = (input: BuildAuthorizationUrlInput): string
  *  re-consent can silently keep the old scope set. Do not add
  *  `include_granted_scopes=true` here: with historical grants on the same Google
  *  consent app, Google folds those unrelated scopes into the new consent flow and
- *  can fail inside accounts.google.com before returning to our callback. */
+ *  can fail inside accounts.google.com before returning to our callback.
+ *
+ *  HubSpot: app scopes marked optional are ignored when they are omitted from
+ *  the provider-specific `optional_scope` parameter. The OpenAPI auth template
+ *  can only declare RFC scopes, so this host-level quirk must apply to both
+ *  first-party and workspace-owned HubSpot OAuth clients. */
 export const providerAuthorizeExtras = (
   authorizationUrl: string,
 ): Readonly<Record<string, string>> => {
@@ -257,10 +272,28 @@ export const providerAuthorizeExtras = (
     if (host === "accounts.google.com") {
       return { access_type: "offline", prompt: "consent" };
     }
+    if (host === "app.hubspot.com") {
+      return { optional_scope: HUBSPOT_OPTIONAL_SCOPES.join(" ") };
+    }
   } catch {
     // Unparseable authorization URL — let buildAuthorizationUrl surface the error.
   }
   return {};
+};
+
+/** Provider-specific scopes embedded in an integration's authorization
+ *  endpoint. HubSpot models app-optional permissions with the non-standard
+ *  `optional_scope` query parameter, so they are part of the integration's
+ *  request contract rather than the registered OAuth app identity. */
+export const optionalScopesFromAuthorizationUrl = (authorizationUrl: string): readonly string[] => {
+  // oxlint-disable-next-line executor/no-try-catch-or-throw -- boundary: URL() throws on invalid input -> no optional scopes
+  try {
+    const value = new URL(authorizationUrl).searchParams.get("optional_scope");
+    if (value == null) return [];
+    return [...new Set(value.split(/\s+/).filter(Boolean))];
+  } catch {
+    return [];
+  }
 };
 
 // ---------------------------------------------------------------------------
@@ -1084,16 +1117,74 @@ const stripIdToken = async (response: Response): Promise<StrippedTokenResponse> 
   };
 };
 
+const SlackGrant = Schema.Struct({
+  access_token: Schema.optional(Schema.String),
+  token_type: Schema.optional(Schema.Literals(["bot", "user", "Bearer", "bearer"])),
+  refresh_token: Schema.optional(Schema.String),
+  expires_in: Schema.optional(Schema.Number),
+  scope: Schema.optional(Schema.String),
+});
+const decodeSlackEnvelope = Schema.decodeUnknownOption(
+  Schema.Struct({
+    ...SlackGrant.fields,
+    ok: Schema.Literal(true),
+    authed_user: Schema.optional(SlackGrant),
+  }),
+);
+
+/** Slack's `bot` and `user` values identify the account, not an HTTP auth
+ * scheme. Project its successful envelope to an RFC 6749 bearer grant before
+ * oauth4webapi validates it. User-only grants may live entirely in authed_user;
+ * never replace a populated top-level grant with another account's grant. */
+const normalizeSlackTokenEnvelope = async (response: Response): Promise<Response> => {
+  const decoded = decodeSlackEnvelope(await safeJsonFromResponse(response));
+  if (Option.isNone(decoded)) return response;
+  const envelope = decoded.value;
+  const user = envelope.authed_user;
+  const grant =
+    user?.access_token !== undefined &&
+    (envelope.access_token === undefined || !envelope.scope?.trim())
+      ? user
+      : envelope;
+  // Standard bearer responses may also contain `ok: true`. Preserve their
+  // scopes and provider metadata; only Slack's actor token types need adapting.
+  if (
+    grant.access_token === undefined ||
+    (grant.token_type !== "bot" && grant.token_type !== "user")
+  ) {
+    return response;
+  }
+  const scope = grant.scope
+    ?.split(/[\s,]+/)
+    .filter(Boolean)
+    .join(" ");
+  return new Response(
+    JSON.stringify({
+      access_token: grant.access_token,
+      token_type: "Bearer",
+      refresh_token: grant.refresh_token,
+      expires_in: grant.expires_in,
+      ...(scope ? { scope } : {}),
+    }),
+    {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    },
+  );
+};
+
 const processTokenEndpointResponse = async (
   as: oauth.AuthorizationServer,
   client: oauth.Client,
   response: Response,
 ): Promise<OAuth2TokenResponse> => {
   const stripped = await stripIdToken(response);
-  const providerUserGrant = await nestedAuthedUserGrant(stripped.response);
+  const normalizedResponse = await normalizeSlackTokenEnvelope(stripped.response);
+  const providerUserGrant = await nestedAuthedUserGrant(normalizedResponse);
   const parsed = tokenResponseFrom(
     as,
-    await oauth.processGenericTokenEndpointResponse(as, client, stripped.response),
+    await oauth.processGenericTokenEndpointResponse(as, client, normalizedResponse),
   );
   const token =
     parsed.scope === undefined && providerUserGrant !== undefined
@@ -1409,7 +1500,7 @@ export const refreshAccessToken = (
         const result = await oauth.processRefreshTokenResponse(
           as,
           client,
-          (await stripIdToken(response)).response,
+          await normalizeSlackTokenEnvelope((await stripIdToken(response)).response),
         );
         return tokenResponseFrom(as, result);
       },

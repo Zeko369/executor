@@ -139,6 +139,7 @@ export type TestConfigOptions<TPlugins extends readonly AnyPlugin[] = readonly [
    *  with no role model. */
   readonly orgWrites?: ExecutorConfig<TPlugins>["orgWrites"];
   readonly oauthDisableClientIdMetadataDocuments?: ExecutorConfig<TPlugins>["oauthDisableClientIdMetadataDocuments"];
+  readonly waitUntil?: ExecutorConfig<TPlugins>["waitUntil"];
 };
 
 export const makeTestConfig = <const TPlugins extends readonly AnyPlugin[] = readonly []>(
@@ -183,6 +184,7 @@ export const makeTestConfig = <const TPlugins extends readonly AnyPlugin[] = rea
     firstPartyOAuthClients: options?.firstPartyOAuthClients,
     enterpriseManagedRollout: options?.enterpriseManagedRollout,
     oauthDisableClientIdMetadataDocuments: options?.oauthDisableClientIdMetadataDocuments,
+    waitUntil: options?.waitUntil,
   };
 };
 
